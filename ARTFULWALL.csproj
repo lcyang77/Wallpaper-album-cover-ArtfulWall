@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net7.0-windows</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<UseWindowsForms>true</UseWindowsForms>
+		<UseWPF>true</UseWPF>
+		<ApplicationIcon>appicon.ico</ApplicationIcon>
+		<Authors>Linus Yang</Authors>
+		<PackageIcon>icon.png</PackageIcon>
+		<RepositoryUrl>https://github.com/lcyang77/MyWallpaper-album-cover.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<Platforms>AnyCPU;x64</Platforms>
+		<AssemblyName>ARTFULWALL</AssemblyName>
+		<!-- Add the following lines for self-contained deployment -->
+		<SelfContained>true</SelfContained>
+		<!-- Set this to 'win-x64' or the specific platform you are targeting -->
+		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
+		<!-- Optional: Disable trimming if you face issues with missing dependencies -->
+		<PublishTrimmed>false</PublishTrimmed>
+		<!-- Optional: Include all necessary runtime files for the app to run -->
+		<IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="SixLabors.ImageSharp" Version="3.0.2" />
+		<PackageReference Include="SixLabors.ImageSharp.Drawing" Version="2.0.0" />
+		<PackageReference Include="System.Drawing.Common" Version="7.0.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Update="config.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<None Update="icon.png">
+			<Pack>True</Pack>
+			<PackagePath>\</PackagePath>
+		</None>
+		<None Update="README.md">
+			<Pack>True</Pack>
+			<PackagePath>\</PackagePath>
+		</None>
+		<None Update="README.txt">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<None Update="appicon.ico">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<None Update="README_EN.md">
+			<Pack>True</Pack>
+			<PackagePath>\</PackagePath>
+		</None>
+	</ItemGroup>
+
+</Project>

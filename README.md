@@ -35,8 +35,7 @@
 # Wallpaper Auto-Updater Program
 
 ## Overview
-This is an automatic desktop wallpaper updating program that runs in the background on Windows systems and randomly changes the desktop wallpaper based on the user's configuration file.
-It provides a user interface through a system tray icon, making it convenient for users to access the program's features.
+This is an automatic desktop wallpaper updating program that runs in the background on Windows systems and randomly changes the desktop wallpaper based on the user's configuration file. It provides a user interface through a system tray icon, making it convenient for users to access the program's features.
 
 ## Key Features
 - Runs in the system tray, saving desktop space.
