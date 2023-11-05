@@ -1,76 +1,65 @@
-MyWallpaperApp 使用说明
 
-如何找到和编辑 config.json
-打开文件浏览器。
-在地址栏输入 %APPDATA%\MyWallpaperApp 并按 Enter。
-在该目录中找到 config.json 文件并用文本编辑器（如记事本）打开。
-配置项说明
-FolderPath: 图片的源文件夹路径。确保这个路径存在且应用程序有权限访问。
-DestFolder: 图片处理后的保存路径。确保这个路径存在且应用程序有权限访问。
-Width: 图片的宽度，单位为像素（px）。必须是正整数。
-Height: 图片的高度，单位为像素（px）。必须是正整数。
-Rows: 在壁纸中行的数量。必须是正整数。
-Cols: 在壁纸中列的数量。必须是正整数。
-Interval: 壁纸更新的间隔时间，单位为秒。必须是正数。
+# 壁纸自动更新程序
 
-格式规范
-确保 config.json 遵循以下格式：
+## 程序概述
+这是一个自动更新桌面壁纸的程序，它在Windows系统的后台运行，并且根据用户的配置文件随机更换桌面壁纸。通过系统托盘图标提供用户界面，方便用户访问程序功能。
 
-{
-    "FolderPath": "D:\\album_cover", // 存放封面图片的文件夹路径   注意：文件夹中的图片数量应当超过Rows*Cols的数量
-    "DestFolder": "D:\\album_cover", // 生成的壁纸图片存放的目标文件夹路径
-    "Width": 3840,                   // 壁纸的宽度（像素）
-    "Height": 2160,                  // 壁纸的高度（像素）
-    "Rows": 6,                       // 壁纸网格的行数（正整数）
-    "Cols": 11,                      // 壁纸网格的列数（正整数）
-    "Interval": 10,                   // 壁纸更新的基本时间间隔（秒）
-    "MinInterval": 3,                // 壁纸更新的最小随机时间间隔（秒）
-    "MaxInterval": 10                 // 壁纸更新的最大随机时间间隔（秒）
-}
+## 主要功能
+- 系统托盘运行，节省桌面空间。
+- 支持开机自启动。
+- 通过配置编辑器允许修改壁纸更新设置。
+- 可打开图片文件夹管理壁纸资源。
+- 备份和恢复配置文件功能，防止配置丢失。
+- 使用 `ImageManager` 类管理图像资源，支持多种图像格式。
+- 根据设定的时间间隔自动更换壁纸。
+- 随机选择壁纸进行更新，增加桌面多样性。
 
-请根据您的需求替换以上路径和数值。由于缓存空间分配有限，对于时间参数的设定过小会导致初始运行时的刷新效果不达预期。
+## 使用方法
+1. 右键点击系统托盘图标打开菜单。
+2. 选择“开机自启动”以启用或禁用程序自启动。
+3. 选择“编辑配置”修改壁纸更新设置。
+4. 选择“打开图片文件夹”添加或移除壁纸图片。
+5. 选择“退出”关闭程序。
 
-问题和支持
-如果您在使用 MyWallpaperApp 时遇到任何问题或需要技术支持，请联系LinusYang77@gmail.com
+## 系统要求
+- Windows 操作系统。
+- .NET 运行时环境。
+
+## 安装说明
+1. 下载程序安装包。
+2. 解压并运行安装程序。
+3. 按照安装向导步骤完成安装。
 
 
 
+# Wallpaper Auto-Updater Program
 
-# MyWallpaper-album-cover
-Wallpaper composed of multiple album covers that can be randomly changed!
+## Overview
+This is an automatic desktop wallpaper updating program that runs in the background on Windows systems and randomly changes the desktop wallpaper based on the user's configuration file.
+It provides a user interface through a system tray icon, making it convenient for users to access the program's features.
 
-MyWallpaperApp Instructions
+## Key Features
+- Runs in the system tray, saving desktop space.
+- Supports auto-start with system boot.
+- Allows modification of wallpaper update settings through a configuration editor.
+- Enables management of wallpaper resources via an image folder.
+- Features backup and restoration of the configuration file to prevent loss of settings.
+- Utilizes the `ImageManager` class to manage image resources, supporting common image formats.
+- Automatically updates the wallpaper based on configured time intervals.
+- Randomly selects wallpapers for updates, adding variety to the desktop.
 
-How do I find and edit config.json
-Open the file browser.
-Type %APPDATA%\MyWallpaperApp in the address bar and press Enter.
-Locate the config.json file in that directory and open it with a text editor such as Notepad.
-Configuration item description
-FolderPath: path to the image source folder. Make sure the path exists and the application has permission to access it.
-DestFolder: saves the image after processing. Make sure the path exists and the application has permission to access it.
-Width: The width of the image in pixels (px). Must be a positive integer.
-Height: The height of the image in pixels (px). Must be a positive integer.
-Rows: The number of rows in the wallpaper. Must be a positive integer.
-Cols: The number of columns in the wallpaper. Must be a positive integer.
-Interval: indicates the interval for updating the wallpaper, expressed in seconds. It has to be positive.
+## Usage
+1. Right-click the system tray icon to open the menu.
+2. Select "Auto-Start at Boot" to enable or disable the program's auto-start feature.
+3. Choose "Edit Configuration" to modify the wallpaper update settings.
+4. Select "Open Image Folder" to add or remove wallpaper images.
+5. Choose "Exit" to close the program.
 
-Format specification
-Make sure config.json follows the following format:
+## System Requirements
+- Windows operating system.
+- .NET runtime environment.
 
-{
-"FolderPath": "D:\\album_cover", // Path to the folder containing the cover image Note: The number of images in the folder should exceed the number of Rows*Cols
-"DestFolder": "D:\\album_cover", // Path to the destination folder where the generated wallpaper image is stored
-"Width": 3840, // The width of the wallpaper (pixels)
-"Height": 2160, // The height of the wallpaper (pixels)
-"Rows": 6, // Number of rows in the wallpaper grid (positive integer)
-"Cols": 11, // Number of columns in the wallpaper grid (positive integer)
-"Interval": 10, // Basic time interval for wallpaper updates (seconds)
-"MinInterval": 3, // Minimum random interval for wallpaper updates (seconds)
-"MaxInterval": 10 // Maximum random interval for wallpaper updates (seconds)
-}
-
-Please replace the above paths and values according to your requirements. Due to the limited cache space allocation, setting the time parameter too small will cause the refresh effect of the initial run to be less than expected.
-
-Questions and support
-If you experience any problems with using MyWallpaperApp or require technical support, please contact LinusYang77@gmail.com
-
+## Installation Instructions
+1. Download the program installation package.
+2. Unzip and run the installer.
+3. Follow the steps in the installation wizard to complete the installation.
