@@ -1,7 +1,7 @@
 #define MyAppName "ArtfulWall"
 #define MyAppVersion "2.0"
 #define MyAppPublisher "Linus Yang"
-#define MyAppURL "https://github.com/lcyang77/MyWallpaper-album-cover"
+#define MyAppURL "https://github.com/lcyang77/ArtfulWall-Wallpaper-album-cover"
 #define MyAppExeName "ArtfulWall.exe"
 
 [Setup]
@@ -15,8 +15,8 @@ AppUpdatesURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
-LicenseFile=README.md
-OutputDir=D:\indie\ArtfulWall_project\MyWallpaperApp\ArtfulWall2.0_Release\install
+LicenseFile=D:\indie\ArtfulWall_project\MyWallpaperApp\ArtfulWall2.0_dev\LICENSE
+OutputDir=D:\indie\ArtfulWall_project\MyWallpaperApp\ArtfulWall2.0_dev\install
 OutputBaseFilename=ArtfulWall_Setup_RequiresDotNet
 SetupIconFile=appicon.ico
 Compression=lzma
@@ -38,8 +38,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "startupicon"; Description: "开机自动启动"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "D:\indie\ArtfulWall_project\MyWallpaperApp\ArtfulWall2.0_Release\publish\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "D:\indie\ArtfulWall_project\MyWallpaperApp\ArtfulWall2.0_Release\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "D:\indie\ArtfulWall_project\MyWallpaperApp\ArtfulWall2.0_dev\publish\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "D:\indie\ArtfulWall_project\MyWallpaperApp\ArtfulWall2.0_dev\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
