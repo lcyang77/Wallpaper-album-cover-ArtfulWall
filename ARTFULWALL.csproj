@@ -3,11 +3,13 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net7.0-windows</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <StartupObject>ArtfulWall.Core.Program</StartupObject>
     <UseWPF>true</UseWPF>
     <Authors>Linus Yang</Authors>
+    <RootNamespace>ArtfulWall</RootNamespace>
     <PackageIcon>icon.png</PackageIcon>
     <RepositoryUrl>https://github.com/lcyang77/MyWallpaper-album-cover.git</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
@@ -16,7 +18,6 @@
     <AssemblyName>ArtfulWall</AssemblyName>
     <!-- Removed self-contained deployment configurations -->
     <PublishTrimmed>false</PublishTrimmed>
-    <RootNamespace>ArtfulWall</RootNamespace>
     <ApplicationIcon>appicon.ico</ApplicationIcon>
   </PropertyGroup>
 
@@ -52,6 +53,14 @@
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
     </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Core\" />
+    <Folder Include="Models\" />
+    <Folder Include="Services\" />
+    <Folder Include="UI\" />
+    <Folder Include="Utils\" />
   </ItemGroup>
 
 </Project>
