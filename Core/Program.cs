@@ -127,16 +127,7 @@ namespace ArtfulWall.Core
                 }
 
                 var imageManager = new ImageManager(10);
-                updater = new WallpaperUpdater(
-                    config.FolderPath!,
-                    config.DestFolder!,
-                    config.Width,
-                    config.Height,
-                    config.Rows,
-                    config.Cols,
-                    imageManager,
-                    config.MinInterval,
-                    config.MaxInterval);
+                                updater = new WallpaperUpdater(                    config.FolderPath!,                    config.DestFolder!,                    config.Width,                    config.Height,                    config.Rows,                    config.Cols,                    imageManager,                    config.MinInterval,                    config.MaxInterval,                    config);
                 updater.Start();
 
                 BackupConfigFile();
@@ -220,11 +211,23 @@ namespace ArtfulWall.Core
                 string iconPath = Path.Combine(appDirectory, "appicon.ico");
                 appIcon = new Icon(iconPath);
 
+                var contextMenu = new ContextMenuStrip();
+                
                 trayIcon = new NotifyIcon
                 {
                     Icon = appIcon,
                     Visible = true,
-                    ContextMenuStrip = new ContextMenuStrip()
+                    ContextMenuStrip = contextMenu
+                };
+                
+                // 添加MouseUp事件处理以在鼠标位置显示菜单
+                trayIcon.MouseUp += (s, e) => 
+                {
+                    if (e.Button == MouseButtons.Right)
+                    {
+                        // 获取鼠标的屏幕坐标
+                        contextMenu.Show(Cursor.Position);
+                    }
                 };
 
                 autoStartMenuItem = new ToolStripMenuItem("开机自启动", null, ToggleAutoStart)

@@ -1,3 +1,4 @@
+//  ConfigEditorForm.cs
 using System;
 using System.IO;
 using System.Text.Json;
@@ -6,6 +7,7 @@ using System.Linq;
 using System.Collections.Generic;
 using ArtfulWall.Models; // Using the separated model
 using ArtfulWall.Services; // For WallpaperUpdater
+using ArtfulWall.Utils; // For DisplayManager
 using Size = System.Drawing.Size; // Alias for System.Drawing.Size
 
 namespace ArtfulWall.UI
@@ -19,6 +21,7 @@ namespace ArtfulWall.UI
         private Configuration currentConfig;  // Store the configuration being edited
         private readonly string configPath;
         private WallpaperUpdater? wallpaperUpdater; // Optional: For applying changes immediately
+        private List<DisplayInfo>? displayInfo; // 存储显示器信息
 
         // UI Controls
         private readonly TextBox folderPathTextBox = new TextBox();
@@ -29,9 +32,17 @@ namespace ArtfulWall.UI
         private readonly NumericUpDown colsNumericUpDown = new NumericUpDown { Maximum = 100, Minimum = 1, Value = 1 };
         private readonly NumericUpDown minIntervalNumericUpDown = new NumericUpDown { Maximum = 3600, Minimum = 1, Value = 3 };
         private readonly NumericUpDown maxIntervalNumericUpDown = new NumericUpDown { Maximum = 3600, Minimum = 1, Value = 10 };
+        private readonly ComboBox wallpaperModeComboBox = new ComboBox(); // 壁纸模式选择
+        private readonly CheckBox adaptToDpiCheckBox = new CheckBox { Text = "自动适应DPI缩放", Checked = true }; // DPI调整选项
+        private readonly CheckBox autoAdjustDisplayCheckBox = new CheckBox { Text = "显示设置变更时自动调整壁纸", Checked = true }; // 自动调整选项
+        private readonly TabControl monitorTabControl = new TabControl(); // 多显示器配置标签页
         private readonly Button confirmButton = new Button { Text = "确认" };
         private readonly Button cancelButton = new Button { Text = "取消" };
         private readonly CheckBox applyWithoutRestartCheckBox = new CheckBox { Text = "保存后立即应用更改（无需重启应用）", Checked = true };
+
+        // 多显示器配置控件集合
+        private Dictionary<int, NumericUpDown> monitorRowsControls = new Dictionary<int, NumericUpDown>();
+        private Dictionary<int, NumericUpDown> monitorColsControls = new Dictionary<int, NumericUpDown>();
 
         /// <summary>
         /// 指示配置自加载以来是否已更改并成功保存。
@@ -50,6 +61,17 @@ namespace ArtfulWall.UI
             this.currentConfig = new Configuration();
             this.originalConfig = this.currentConfig.Clone();
 
+            // 获取显示器信息
+            try
+            {
+                displayInfo = DisplayManager.GetDisplays();
+            }
+            catch
+            {
+                // 如果无法获取显示器信息，使用空列表
+                displayInfo = new List<DisplayInfo>();
+            }
+
             InitializeFormControls();
             LoadConfiguration();
         }
@@ -66,7 +88,7 @@ namespace ArtfulWall.UI
         private void InitializeFormControls()
         {
             this.Text = "配置编辑器";
-            this.ClientSize = new Size(430, 320); // Adjusted size for better spacing
+            this.ClientSize = new Size(800, 550); // 增加窗体大小以适应更多控件
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
             this.MinimizeBox = false;
@@ -76,22 +98,23 @@ namespace ArtfulWall.UI
             var tableLayoutPanel = new TableLayoutPanel
             {
                 ColumnCount = 3,
-                RowCount = 9, // 7 for inputs, 1 for checkbox, 1 for padding/buttons
+                RowCount = 12, // 增加行数以容纳新控件
                 Dock = DockStyle.Fill,
                 AutoSize = true,
                 CellBorderStyle = TableLayoutPanelCellBorderStyle.None, // Cleaner look
             };
 
             // Define column styles for better control
-            tableLayoutPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120F)); // Labels
+            tableLayoutPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 160F)); // 增加标签宽度
             tableLayoutPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));  // Input controls
             tableLayoutPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));       // Browse button
 
             // Define row styles
-            for (int i = 0; i < 7; i++) // Input rows
+            for (int i = 0; i < 10; i++) // 增加输入行数
                 tableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 32F));
-            tableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 35F)); // Checkbox row
-            tableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));      // Button panel row (will be handled by DockStyle.Bottom)
+            tableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 220F)); // 多显示器标签页占用更多空间
+            tableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 35F)); // 应用选项
+            tableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));      // 按钮行
 
             // Helper to add controls
             void AddControlRow(string labelText, Control control, int rowIndex, bool spanInput = true)
@@ -113,7 +136,7 @@ namespace ArtfulWall.UI
             browseButton.Click += BrowseButton_Click;
             tableLayoutPanel.Controls.Add(browseButton, 2, 0);
 
-            // --- 其他控件 ---
+            // --- 基本控件 ---
             AddControlRow("宽度 (像素):", widthNumericUpDown, 1);
             AddControlRow("高度 (像素):", heightNumericUpDown, 2);
             AddControlRow("行数:", rowsNumericUpDown, 3);
@@ -121,10 +144,28 @@ namespace ArtfulWall.UI
             AddControlRow("最小间隔 (秒):", minIntervalNumericUpDown, 5);
             AddControlRow("最大间隔 (秒):", maxIntervalNumericUpDown, 6);
 
-            // --- CheckBox ---
+            // --- 壁纸模式选择 ---
+            wallpaperModeComboBox.DropDownStyle = ComboBoxStyle.DropDownList;
+            wallpaperModeComboBox.Items.AddRange(new object[] { 
+                "每显示器独立壁纸", 
+                "单一壁纸" 
+            });
+            wallpaperModeComboBox.SelectedIndex = 0;
+            wallpaperModeComboBox.SelectedIndexChanged += WallpaperMode_Changed;
+            AddControlRow("壁纸模式:", wallpaperModeComboBox, 7);
+
+            // --- DPI和自动调整选项 ---
+            AddControlRow("DPI适配:", adaptToDpiCheckBox, 8);
+            AddControlRow("显示器变更:", autoAdjustDisplayCheckBox, 9);
+            
+            // --- 多显示器配置标签页 ---
+            InitializeMonitorTabs();
+            AddControlRow("显示器特定设置:", monitorTabControl, 10);
+
+            // --- 应用选项 ---
             applyWithoutRestartCheckBox.Dock = DockStyle.Fill;
             applyWithoutRestartCheckBox.Padding = new Padding(0, 5, 0, 0);
-            tableLayoutPanel.Controls.Add(applyWithoutRestartCheckBox, 0, 7);
+            tableLayoutPanel.Controls.Add(applyWithoutRestartCheckBox, 0, 11);
             tableLayoutPanel.SetColumnSpan(applyWithoutRestartCheckBox, 3);
 
             // --- 按钮面板 ---
@@ -146,6 +187,121 @@ namespace ArtfulWall.UI
 
             this.Controls.Add(tableLayoutPanel);
             this.Controls.Add(buttonPanel); // Add button panel last so it's at the bottom
+        }
+
+        private void InitializeMonitorTabs()
+        {
+            monitorTabControl.SizeMode = TabSizeMode.FillToRight;
+            monitorTabControl.Dock = DockStyle.Fill;
+            monitorTabControl.Height = 200;
+            monitorRowsControls.Clear();
+            monitorColsControls.Clear();
+
+            if (displayInfo == null || displayInfo.Count == 0)
+            {
+                // 如果没有显示器信息，添加一个说明标签页
+                var noDisplayTab = new TabPage("无法检测显示器");
+                var infoLabel = new Label
+                {
+                    Text = "无法检测系统显示器信息，将使用基本配置。",
+                    Dock = DockStyle.Fill,
+                    TextAlign = System.Drawing.ContentAlignment.MiddleCenter
+                };
+                noDisplayTab.Controls.Add(infoLabel);
+                monitorTabControl.TabPages.Add(noDisplayTab);
+                return;
+            }
+
+            // 为每个显示器创建标签页
+            foreach (var display in displayInfo)
+            {
+                // 创建显示器标签页
+                string orientation = display.Orientation.ToString();
+                string title = $"显示器 {display.DisplayNumber + 1}: {display.Width}x{display.Height}";
+                if (display.IsPrimary)
+                    title += " (主显示器)";
+                title += $" - {orientation}";
+
+                var tabPage = new TabPage(title);
+                
+                // 配置标签页布局
+                var tabLayout = new TableLayoutPanel
+                {
+                    ColumnCount = 2,
+                    RowCount = 3,
+                    Dock = DockStyle.Fill,
+                    Padding = new Padding(10),
+                };
+                
+                tabLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100F));
+                tabLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+                
+                for (int i = 0; i < 3; i++)
+                    tabLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+                
+                // 显示器信息标签
+                var infoLabel = new Label
+                {
+                    Text = $"DPI缩放: {display.DpiScaling:F2}x   分辨率: {display.Width}x{display.Height}",
+                    Dock = DockStyle.Fill,
+                    TextAlign = System.Drawing.ContentAlignment.MiddleLeft
+                };
+                tabLayout.Controls.Add(infoLabel, 0, 0);
+                tabLayout.SetColumnSpan(infoLabel, 2);
+
+                // 行数控件
+                var rowsLabel = new Label
+                {
+                    Text = "行数:",
+                    Dock = DockStyle.Fill,
+                    TextAlign = System.Drawing.ContentAlignment.MiddleLeft
+                };
+                
+                var rowsUpDown = new NumericUpDown
+                {
+                    Minimum = 1,
+                    Maximum = 100,
+                    Value = rowsNumericUpDown.Value, // 默认使用全局值
+                    Dock = DockStyle.Fill
+                };
+                
+                tabLayout.Controls.Add(rowsLabel, 0, 1);
+                tabLayout.Controls.Add(rowsUpDown, 1, 1);
+                monitorRowsControls[display.DisplayNumber] = rowsUpDown;
+                
+                // 列数控件
+                var colsLabel = new Label
+                {
+                    Text = "列数:",
+                    Dock = DockStyle.Fill,
+                    TextAlign = System.Drawing.ContentAlignment.MiddleLeft
+                };
+                
+                var colsUpDown = new NumericUpDown
+                {
+                    Minimum = 1,
+                    Maximum = 100,
+                    Value = colsNumericUpDown.Value, // 默认使用全局值
+                    Dock = DockStyle.Fill
+                };
+                
+                tabLayout.Controls.Add(colsLabel, 0, 2);
+                tabLayout.Controls.Add(colsUpDown, 1, 2);
+                monitorColsControls[display.DisplayNumber] = colsUpDown;
+                
+                // 添加布局到标签页
+                tabPage.Controls.Add(tabLayout);
+                monitorTabControl.TabPages.Add(tabPage);
+            }
+        }
+
+        private void WallpaperMode_Changed(object? sender, EventArgs e)
+        {
+            // 根据壁纸模式启用/禁用多显示器配置
+            bool isPerMonitor = wallpaperModeComboBox.SelectedIndex == 0;
+            monitorTabControl.Enabled = isPerMonitor;
+            adaptToDpiCheckBox.Enabled = isPerMonitor;
+            autoAdjustDisplayCheckBox.Enabled = isPerMonitor;
         }
 
         private void BrowseButton_Click(object? sender, EventArgs e)
@@ -221,6 +377,7 @@ namespace ArtfulWall.UI
 
         private void PopulateUIFromConfig(Configuration configToDisplay)
         {
+            // 填充基本设置
             folderPathTextBox.Text = configToDisplay.FolderPath;
             widthNumericUpDown.Value = Math.Max(widthNumericUpDown.Minimum, Math.Min(widthNumericUpDown.Maximum, configToDisplay.Width));
             heightNumericUpDown.Value = Math.Max(heightNumericUpDown.Minimum, Math.Min(heightNumericUpDown.Maximum, configToDisplay.Height));
@@ -228,6 +385,57 @@ namespace ArtfulWall.UI
             colsNumericUpDown.Value = Math.Max(colsNumericUpDown.Minimum, Math.Min(colsNumericUpDown.Maximum, configToDisplay.Cols));
             minIntervalNumericUpDown.Value = Math.Max(minIntervalNumericUpDown.Minimum, Math.Min(minIntervalNumericUpDown.Maximum, configToDisplay.MinInterval));
             maxIntervalNumericUpDown.Value = Math.Max(maxIntervalNumericUpDown.Minimum, Math.Min(maxIntervalNumericUpDown.Maximum, configToDisplay.MaxInterval));
+            
+            // 填充新增设置
+            wallpaperModeComboBox.SelectedIndex = configToDisplay.Mode == Configuration.WallpaperMode.PerMonitor ? 0 : 1;
+            adaptToDpiCheckBox.Checked = configToDisplay.AdaptToDpiScaling;
+            autoAdjustDisplayCheckBox.Checked = configToDisplay.AutoAdjustToDisplayChanges;
+            
+            // 多显示器设置
+            if (displayInfo != null && displayInfo.Count > 0)
+            {
+                foreach (var display in displayInfo)
+                {
+                    // 查找此显示器的配置
+                    var monitorConfig = configToDisplay.MonitorConfigurations
+                        .FirstOrDefault(mc => mc.DisplayNumber == display.DisplayNumber);
+                    
+                    if (monitorConfig != null)
+                    {
+                        // 找到配置，填充对应的UI控件
+                        if (monitorRowsControls.TryGetValue(display.DisplayNumber, out var rowsControl))
+                        {
+                            rowsControl.Value = Math.Max(rowsControl.Minimum, 
+                                Math.Min(rowsControl.Maximum, monitorConfig.Rows));
+                        }
+                        
+                        if (monitorColsControls.TryGetValue(display.DisplayNumber, out var colsControl))
+                        {
+                            colsControl.Value = Math.Max(colsControl.Minimum, 
+                                Math.Min(colsControl.Maximum, monitorConfig.Cols));
+                        }
+                    }
+                    else
+                    {
+                        // 没有找到配置，使用全局默认值
+                        if (monitorRowsControls.TryGetValue(display.DisplayNumber, out var rowsControl))
+                        {
+                            rowsControl.Value = configToDisplay.Rows;
+                        }
+                        
+                        if (monitorColsControls.TryGetValue(display.DisplayNumber, out var colsControl))
+                        {
+                            colsControl.Value = configToDisplay.Cols;
+                        }
+                    }
+                }
+            }
+            
+            // 根据壁纸模式启用/禁用多显示器配置
+            bool isPerMonitor = wallpaperModeComboBox.SelectedIndex == 0;
+            monitorTabControl.Enabled = isPerMonitor;
+            adaptToDpiCheckBox.Enabled = isPerMonitor;
+            autoAdjustDisplayCheckBox.Enabled = isPerMonitor;
         }
 
         private Configuration GetCurrentConfigFromUI()
@@ -240,7 +448,13 @@ namespace ArtfulWall.UI
                 Rows = (int)rowsNumericUpDown.Value,
                 Cols = (int)colsNumericUpDown.Value,
                 MinInterval = (int)minIntervalNumericUpDown.Value,
-                MaxInterval = (int)maxIntervalNumericUpDown.Value
+                MaxInterval = (int)maxIntervalNumericUpDown.Value,
+                Mode = wallpaperModeComboBox.SelectedIndex == 0 ? 
+                    Configuration.WallpaperMode.PerMonitor : 
+                    Configuration.WallpaperMode.Single,
+                AdaptToDpiScaling = adaptToDpiCheckBox.Checked,
+                AutoAdjustToDisplayChanges = autoAdjustDisplayCheckBox.Checked,
+                MonitorConfigurations = new List<MonitorConfiguration>()
             };
 
             if (!string.IsNullOrWhiteSpace(uiConfig.FolderPath))
@@ -251,6 +465,33 @@ namespace ArtfulWall.UI
             {
                 uiConfig.DestFolder = null;
             }
+            
+            // 添加多显示器配置
+            if (displayInfo != null && displayInfo.Count > 0 && uiConfig.Mode == Configuration.WallpaperMode.PerMonitor)
+            {
+                foreach (var display in displayInfo)
+                {
+                    if (monitorRowsControls.TryGetValue(display.DisplayNumber, out var rowsControl) &&
+                        monitorColsControls.TryGetValue(display.DisplayNumber, out var colsControl))
+                    {
+                        var monitorConfig = new MonitorConfiguration
+                        {
+                            DisplayNumber = display.DisplayNumber,
+                            MonitorId = display.DeviceName,
+                            Width = display.Width,
+                            Height = display.Height,
+                            DpiScaling = display.DpiScaling,
+                            Rows = (int)rowsControl.Value,
+                            Cols = (int)colsControl.Value,
+                            IsPortrait = display.Orientation == DisplayInfo.OrientationType.Portrait || 
+                                         display.Orientation == DisplayInfo.OrientationType.PortraitFlipped
+                        };
+                        
+                        uiConfig.MonitorConfigurations.Add(monitorConfig);
+                    }
+                }
+            }
+            
             return uiConfig;
         }
 
