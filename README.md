@@ -3,7 +3,7 @@
 # ArtfulWall 壁纸自动更新程序
 
 ## 项目简介
-ArtfulWall 是一款专为 Windows 平台设计的智能壁纸自动更换程序。它提供强大的多显示器支持，能够为每个屏幕独立设置壁纸，并智能适应不同分辨率、方向及 DPI 缩放。程序支持壁纸网格拼贴、自定义切换间隔、系统托盘快捷操作、可视化配置编辑（支持热更新）、配置备份与恢复以及开机自启动等丰富特性。ArtfulWall 致力于为追求个性化、爱好音乐、专辑封面、桌面美学的用户提供流畅、稳定且高度可定制的壁纸体验。
+ArtfulWall 是一款专为 Windows 平台设计的智能壁纸自动更换程序。它提供强大的多显示器支持，能够为每个屏幕独立设置壁纸，并智能适应不同分辨率、方向及 DPI 缩放。程序可以动态随机更新网格中的图片，降低审美疲劳。ArtfulWall 致力于为追求个性化、爱好音乐、专辑封面、桌面美学的用户提供流畅、稳定且高度可定制的壁纸体验。
 
 [![video](https://img.youtube.com/vi/LIOjDCaVK_E/maxresdefault.jpg)](https://www.youtube.com/watch?v=LIOjDCaVK_E)
 <table>
@@ -86,7 +86,7 @@ ArtfulWall 是一款专为 Windows 平台设计的智能壁纸自动更换程序
 # ArtfulWall - Automatic Wallpaper Updater
 
 ## Project Introduction
-ArtfulWall is an intelligent automatic wallpaper changing program designed specifically for the Windows platform. It offers robust multi-monitor support, capable of setting independent wallpapers for each screen and intelligently adapting to different resolutions, orientations, and DPI scaling. The program supports features such as wallpaper grid collage, custom switching intervals, quick operations via a system tray icon, visual configuration editing (with hot-reload support), configuration backup and restore, and auto-start on boot. ArtfulWall aims to provide a smooth, stable, and highly customizable wallpaper experience for users who seek personalization and appreciate music, album art, and desktop aesthetics.
+ArtfulWall is an intelligent automatic wallpaper changing program designed specifically for the Windows platform. It offers robust multi-monitor support, capable of setting independent wallpapers for each screen and intelligently adapting to different resolutions, orientations, and DPI scaling. The program can dynamically and randomly update the images in the grid to reduce aesthetic fatigue. ArtfulWall aims to provide a smooth, stable, and highly customizable wallpaper experience for users who seek personalization and appreciate music, album art, and desktop aesthetics.
 
 ## Main Features
 - **System Tray Operation**: The program runs persistently in the background. Access all core functions quickly via the right-click tray menu, such as editing configurations, opening the image folder, setting auto-start, and exiting the program.
