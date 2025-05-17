@@ -11,7 +11,7 @@
     <Authors>Linus Yang</Authors>
     <RootNamespace>ArtfulWall</RootNamespace>
     <PackageIcon>icon.png</PackageIcon>
-    <RepositoryUrl>https://github.com/lcyang77/MyWallpaper-album-cover.git</RepositoryUrl>
+    <RepositoryUrl>https://github.com/lcyang77/ArtfulWall-Wallpaper-album-cover.git</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <Platforms>AnyCPU;x64</Platforms>

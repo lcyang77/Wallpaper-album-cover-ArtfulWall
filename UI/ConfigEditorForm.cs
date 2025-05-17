@@ -88,7 +88,7 @@ namespace ArtfulWall.UI
         private void InitializeFormControls()
         {
             this.Text = "配置编辑器";
-            this.ClientSize = new Size(800, 550); // 增加窗体大小以适应更多控件
+            this.ClientSize = new Size(850, 550); // 增加窗体大小以适应更多控件
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
             this.MinimizeBox = false;
