@@ -16,7 +16,6 @@ ArtfulWall 是一款 Windows 平台下的多显示器智能壁纸自动更换程
 - **配置备份与恢复**：自动备份配置文件，防止误操作丢失。
 - **开机自启动**：一键设置/取消随 Windows 启动。
 - **高性能图像缓存**：内置 LRU 缓存与异步加载，提升大图/多图性能。
-- **异常处理与提示**：详细的错误提示与容错机制，保障稳定运行。
 
 ## 目录结构
 - `Core/Program.cs`：主入口，托盘与主循环、配置加载、业务调度。
@@ -57,7 +56,6 @@ ArtfulWall 是一款 Windows 平台下的多显示器智能壁纸自动更换程
 3. 可通过托盘菜单或 `config.json` 进行个性化设置。
 
 ## 高级说明
-- 支持便携模式（带 `--portable` 参数或同目录有配置文件）。
 - 自动检测并适配显示器变更、DPI 改变等系统事件。
 - 配置文件自动备份，异常时自动恢复。
 - 支持命令行参数与手动编辑配置。
@@ -80,7 +78,6 @@ ArtfulWall is a powerful, multi-monitor wallpaper auto-updater for Windows. It f
 - **Backup & restore**: Auto backup of config, easy recovery.
 - **Auto-start**: One-click enable/disable on Windows boot.
 - **High-performance image cache**: LRU cache, async loading for large/many images.
-- **Robust error handling**: User-friendly error messages, stable operation.
 
 ## Directory Structure
 - `Core/Program.cs`: Main entry, tray, config loading, business logic.
@@ -121,7 +118,6 @@ ArtfulWall is a powerful, multi-monitor wallpaper auto-updater for Windows. It f
 3. Customize via tray menu or `config.json`.
 
 ## Advanced
-- Portable mode supported (`--portable` or config in exe dir).
 - Auto adapts to display/DPI changes.
 - Auto config backup and recovery.
 - Command-line and manual config supported.
