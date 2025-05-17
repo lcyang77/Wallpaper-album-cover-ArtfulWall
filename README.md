@@ -144,8 +144,6 @@ ArtfulWall is an intelligent automatic wallpaper changing program designed speci
 ## Contributing
 Issues and Pull Requests are welcome! If you have any suggestions for improvement or have found a bug, please feel free to raise them.
 
-
-
 ## License
 This project is licensed under the MIT License - see the LICENSE file for details.
 
