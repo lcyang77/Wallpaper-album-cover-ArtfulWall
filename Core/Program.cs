@@ -1,11 +1,12 @@
+// Program_v3.cs (Dead-Lock-Free Edition)
 using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 using System.Windows.Forms;
-using System.Collections.Generic;
 using Microsoft.Win32;
 using ArtfulWall.Models;
 using ArtfulWall.Services;
@@ -13,387 +14,335 @@ using ArtfulWall.UI;
 
 namespace ArtfulWall.Core
 {
+    internal static class Constants
+    {
+        public const int    DefaultImageCacheSize = 10;
+        public const string BackupFileName        = "config_backup.json";
+        public const string AutoStartKey          = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
+        public const string AutoStartValue        = "ArtfulWall";
+        public static readonly string[] AllowedExt = { ".jpg", ".jpeg", ".png", ".bmp" };
+    }
+
     public static class Program
     {
-        private static NotifyIcon? trayIcon;
-        private static ToolStripMenuItem? autoStartMenuItem;
-        private static string appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        private static string appFolder = Path.Combine(appDataPath, "MyWallpaperApp");
-        private static string configPath = "";
-        private static string baseConfigPath = "";
-        private static bool isPortable = false;
-        private static WallpaperUpdater? updater;
-        private static Icon? appIcon;
+        /// <summary>是否以“便携模式”运行 —— 供外部组件读取。</summary>
+        public static bool IsPortable { get; private set; }
 
         [STAThread]
-        static void Main(string[] args)
+        private static void Main(string[] args)
         {
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
-            AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
+            ApplicationConfiguration.Initialize();
+            Application.Run(new TrayAppContext(args));
+        }
 
-            // 1. 确定配置路径：可移植模式 vs. Roaming 模式
-            string exeDir = AppDomain.CurrentDomain.BaseDirectory;
-            baseConfigPath = Path.Combine(exeDir, "config.json");
-            string roamingConfigPath = Path.Combine(appFolder, "config.json");
+        /// <summary>
+        /// WinForms 托盘应用上下文：负责消息循环、资源管理和退出逻辑。
+        /// </summary>
+        private sealed class TrayAppContext : ApplicationContext
+        {
+            // ————— 字段 —————
+            private NotifyIcon?       _trayIcon;
+            private WallpaperUpdater? _updater;
 
-            bool inProgramFiles = exeDir.StartsWith(
-                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-                StringComparison.OrdinalIgnoreCase)
-                || exeDir.StartsWith(
-                Environment.GetFolderPath(Environment.SpecialFolder.Windows),
-                StringComparison.OrdinalIgnoreCase);
+            private readonly string _configPath;
+            private readonly string _baseConfigPath;
+            private readonly string _backupPath;
 
-            if (args.Contains("--portable") ||
-                (File.Exists(baseConfigPath) && !inProgramFiles))
+            // ———————————————————— 构造 & 初始化 ————————————————————
+            public TrayAppContext(string[] args)
             {
-                isPortable = true;
-                configPath = baseConfigPath;
-            }
-            else
-            {
-                isPortable = false;
-                configPath = roamingConfigPath;
+                // 1️⃣ 解析配置路径（含便携模式判定） ---------------------------
+                string exeDir   = AppDomain.CurrentDomain.BaseDirectory;
+                _baseConfigPath = Path.Combine(exeDir, "config.json");
 
-                if (!Directory.Exists(appFolder))
-                    Directory.CreateDirectory(appFolder);
+                string roamingRoot = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "ArtfulWall");
+                Directory.CreateDirectory(roamingRoot);
+                string roamingConfigPath = Path.Combine(roamingRoot, "config.json");
 
-                if (!File.Exists(configPath))
+                bool inProgramFiles =
+                       exeDir.StartsWith(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                                         StringComparison.OrdinalIgnoreCase) ||
+                       exeDir.StartsWith(Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+                                         StringComparison.OrdinalIgnoreCase);
+
+                IsPortable = args.Contains("--portable") ||
+                             (File.Exists(_baseConfigPath) && !inProgramFiles);
+
+                _configPath = IsPortable ? _baseConfigPath : roamingConfigPath;
+                _backupPath = Path.Combine(Path.GetDirectoryName(_configPath)!, Constants.BackupFileName);
+
+                // ⏱️ 2️⃣ 确保配置文件存在 —— 取消同步等待死锁风险
+                try
                 {
-                    if (!RestoreBackupConfigFile())
-                    {
-                        if (File.Exists(baseConfigPath))
-                            File.Copy(baseConfigPath, configPath);
-                        else
-                        {
-                            MessageBox.Show(
-                                "默认配置文件未找到。请确保应用程序目录中存在 config.json。",
-                                "配置错误",
-                                MessageBoxButtons.OK,
-                                MessageBoxIcon.Error);
-                            return;
-                        }
-                    }
+                    EnsureConfigFilePresentAsync()
+                        .ConfigureAwait(false)
+                        .GetAwaiter()
+                        .GetResult();
                 }
-            }
-
-            // 2. 初始化托盘图标
-            InitializeTrayIcon();
-
-            // 3. 读取并应用配置
-            try
-            {
-                var configText = File.ReadAllText(configPath);
-                var config = JsonSerializer.Deserialize<Configuration>(configText);
-                if (config == null)
+                catch
                 {
-                    MessageBox.Show(
-                        "配置文件无法解析。请确保 config.json 的格式正确。",
-                        "配置错误",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error);
+                    ExitThread();
                     return;
                 }
 
-                // 自动创建 my_wallpaper 子目录作为 DestFolder
-                if (string.IsNullOrWhiteSpace(config.DestFolder) || !Directory.Exists(config.DestFolder))
-                {
-                    string autoDest = Path.Combine(config.FolderPath!, "my_wallpaper");
-                    Directory.CreateDirectory(autoDest);
-                    config.DestFolder = autoDest;
+                // 3️⃣ 读取 & 校验配置 ------------------------------------------
+                if (!TryLoadConfiguration(out Configuration cfg)) { ExitThread(); return; }
 
-                    // 写回更新后的配置
-                    File.WriteAllText(configPath,
-                        JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true }));
+                // 无图片预警
+                if (!HasImageFiles(cfg.FolderPath))
+                {
+                    MessageBox.Show($"在目录 \"{cfg.FolderPath}\" 中未找到任何图片（jpg/png/bmp）。",
+                                    "未找到图片", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
 
-                ValidateConfiguration(config);
-                
-                // 检查源文件夹是否包含图片文件
-                var allowedExtensions = new HashSet<string> { ".jpg", ".jpeg", ".png", ".bmp" };
-                bool hasImageFiles = Directory
-                    .EnumerateFiles(config.FolderPath!, "*.*", SearchOption.TopDirectoryOnly)
-                    .Any(file => 
-                        allowedExtensions.Contains(Path.GetExtension(file).ToLowerInvariant()) &&
-                        !file.EndsWith("wallpaper.jpg", StringComparison.OrdinalIgnoreCase));
-                        
-                if (!hasImageFiles)
+                // 4️⃣ 启动业务核心（WallpaperUpdater） -------------------------
+                if (!StartUpdater(cfg))  { ExitThread(); return; }
+
+                // 5️⃣ 创建 NotifyIcon & 菜单 -----------------------------------
+                CreateNotifyIcon(exeDir);
+            }
+
+            // ———————————————————— 配置 / 启动 ————————————————————
+
+            /// <summary>
+            /// 异步确保配置文件存在。使用 ConfigureAwait(false) 消除 UI 线程死锁风险。
+            /// </summary>
+            private async Task EnsureConfigFilePresentAsync()
+            {
+                if (File.Exists(_configPath)) return;
+
+                try
                 {
-                    MessageBox.Show(
-                        $"警告：在设定的文件夹 \"{config.FolderPath}\" 中未找到任何图片文件。\n\n请添加JPG、PNG或BMP格式的图片到该文件夹，或修改配置指向一个包含图片的文件夹。",
-                        "未找到图片",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Warning);
+                    if (File.Exists(_backupPath))
+                        await CopyFileAsync(_backupPath, _configPath).ConfigureAwait(false);
+                    else if (File.Exists(_baseConfigPath))
+                        await CopyFileAsync(_baseConfigPath, _configPath).ConfigureAwait(false);
+                    else
+                        throw new FileNotFoundException("未找到任何有效配置文件！");
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"准备配置文件失败：{ex.Message}",
+                                    "配置错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    throw;
+                }
+            }
+
+            private bool TryLoadConfiguration(out Configuration cfg)
+            {
+                cfg = default!;
+                try
+                {
+                    string json = File.ReadAllText(_configPath);
+                    cfg = JsonSerializer.Deserialize<Configuration>(json)
+                          ?? throw new JsonException("反序列化返回 null");
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"读取或解析配置失败：{ex.Message}",
+                                    "配置错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return false;
                 }
 
-                var imageManager = new ImageManager(10);
-                                updater = new WallpaperUpdater(                    config.FolderPath!,                    config.DestFolder!,                    config.Width,                    config.Height,                    config.Rows,                    config.Cols,                    imageManager,                    config.MinInterval,                    config.MaxInterval,                    config);
-                updater.Start();
+                // 自动补全 DestFolder
+                if (string.IsNullOrWhiteSpace(cfg.DestFolder) || !Directory.Exists(cfg.DestFolder))
+                {
+                    cfg.DestFolder = Path.Combine(cfg.FolderPath, "my_wallpaper");
+                    Directory.CreateDirectory(cfg.DestFolder);
 
-                BackupConfigFile();
-            }
-            catch (JsonException)
-            {
-                MessageBox.Show(
-                    "配置文件格式错误。请确保 config.json 的格式正确。",
-                    "配置错误",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
-            }
-            catch (UnauthorizedAccessException uae)
-            {
-                MessageBox.Show(
-                    $"无法访问配置文件路径，请检查文件权限：{uae.Message}",
-                    "权限错误",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(
-                    $"发生错误：{ex.Message}",
-                    "错误",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
+                    File.WriteAllText(_configPath,
+                        JsonSerializer.Serialize(cfg, new JsonSerializerOptions { WriteIndented = true }));
+                }
+
+                // 严格校验字段
+                try
+                {
+                    ValidateConfiguration(cfg);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"配置校验失败：{ex.Message}",
+                                    "配置错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return false;
+                }
+
+                return true;
             }
 
-            Application.Run();
-        }
-
-        static bool RestoreBackupConfigFile()
-        {
-            string backupConfigPath = Path.Combine(
-                Path.GetDirectoryName(configPath)!,
-                "config_backup.json");
-            if (File.Exists(backupConfigPath))
+            private bool StartUpdater(Configuration c)
             {
                 try
                 {
-                    File.Copy(backupConfigPath, configPath, true);
+                    _updater = new WallpaperUpdater(
+                        c.FolderPath, c.DestFolder,
+                        c.Width, c.Height,
+                        c.Rows,  c.Cols,
+                        new ImageManager(Constants.DefaultImageCacheSize),
+                        c.MinInterval, c.MaxInterval,
+                        c);
+                    _updater.Start();
+
+                    // 启动成功后异步备份
+                    _ = Task.Run(() => File.Copy(_configPath, _backupPath, true));
                     return true;
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(
-                        $"恢复备份配置文件失败：{ex.Message}",
-                        "错误",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error);
+                    MessageBox.Show($"启动壁纸更新失败：{ex.Message}",
+                                    "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return false;
                 }
             }
-            return false;
-        }
 
-        static void BackupConfigFile()
-        {
-            string backupConfigPath = Path.Combine(
-                Path.GetDirectoryName(configPath)!,
-                "config_backup.json");
-            try
+            // ———————————————————— NotifyIcon & 菜单 ————————————————————
+            private void CreateNotifyIcon(string exeDir)
             {
-                File.Copy(configPath, backupConfigPath, true);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(
-                    $"备份配置文件失败：{ex.Message}",
-                    "错误",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
-            }
-        }
-
-        static void InitializeTrayIcon()
-        {
-            try
-            {
-                string appDirectory = AppDomain.CurrentDomain.BaseDirectory;
-                string iconPath = Path.Combine(appDirectory, "appicon.ico");
-                appIcon = new Icon(iconPath);
-
-                var contextMenu = new ContextMenuStrip();
-                
-                trayIcon = new NotifyIcon
+                var menu = new ContextMenuStrip
                 {
-                    Icon = appIcon,
-                    Visible = true,
-                    ContextMenuStrip = contextMenu
-                };
-                
-                // 添加MouseUp事件处理以在鼠标位置显示菜单
-                trayIcon.MouseUp += (s, e) => 
-                {
-                    if (e.Button == MouseButtons.Right)
+                    Items =
                     {
-                        // 获取鼠标的屏幕坐标
-                        contextMenu.Show(Cursor.Position);
+                        new ToolStripMenuItem("开机自启动", null, ToggleAutoStart)
+                        {
+                            Checked = IsAutoStartEnabled()
+                        },
+                        new ToolStripMenuItem("配置编辑器",   null, OpenConfigEditor),
+                        new ToolStripMenuItem("打开图片文件夹", null, OpenImageFolder),
+                        new ToolStripSeparator(),
+                        new ToolStripMenuItem("退出", null, ExitApp)
                     }
                 };
 
-                autoStartMenuItem = new ToolStripMenuItem("开机自启动", null, ToggleAutoStart)
+                _trayIcon = new NotifyIcon
                 {
-                    Checked = IsAutoStartEnabled()
+                    Icon             = new Icon(Path.Combine(exeDir, "appicon.ico")),
+                    ContextMenuStrip = menu,
+                    Text             = "ArtfulWall",
+                    Visible          = true
                 };
-                trayIcon.ContextMenuStrip.Items.Add(autoStartMenuItem);
-                trayIcon.ContextMenuStrip.Items.Add("配置编辑器", null, OpenConfigEditor);
-                trayIcon.ContextMenuStrip.Items.Add("打开图片文件夹", null, OpenImageFolder);
-                trayIcon.ContextMenuStrip.Items.Add("退出", null, OnExit);
             }
-            catch (Exception ex)
-            {
-                MessageBox.Show(
-                    $"初始化系统托盘图标时发生错误：{ex.Message}",
-                    "错误",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
-            }
-        }
 
-        private static void OpenConfigEditor(object? sender, EventArgs e)
-        {
-            var editor = new ConfigEditorForm(configPath);
-            if (updater != null)
+            // ———————————————————— 菜单回调 ————————————————————
+            private void ToggleAutoStart(object? sender, EventArgs e)
             {
-                editor.SetWallpaperUpdater(updater);
-            }
-            editor.ShowDialog();
+                if (sender is not ToolStripMenuItem item) return;
 
-            if (editor.ConfigChanged && updater == null)
-            {
-                // 如果配置已更改但无法立即应用，则重启应用程序
-                RestartApplication();
-            }
-        }
-
-        private static void OpenImageFolder(object? sender, EventArgs e)
-        {
-            try
-            {
-                var configText = File.ReadAllText(configPath);
-                var config = JsonSerializer.Deserialize<Configuration>(configText);
-
-                if (config != null && !string.IsNullOrWhiteSpace(config.FolderPath) && Directory.Exists(config.FolderPath))
+                bool enable = !item.Checked;
+                try
                 {
-                    Process.Start("explorer.exe", config.FolderPath);
-                }
-                else
-                {
-                    MessageBox.Show(
-                        "图片文件夹路径无效或不存在。请先设置有效的图片文件夹路径。",
-                        "错误",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error);
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(
-                    $"打开图片文件夹时发生错误：{ex.Message}",
-                    "错误",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
-            }
-        }
-
-        private static void ToggleAutoStart(object? sender, EventArgs e)
-        {
-            if (autoStartMenuItem != null)
-            {
-                bool currentState = autoStartMenuItem.Checked;
-                SetAutoStart(!currentState);
-                autoStartMenuItem.Checked = !currentState;
-            }
-        }
-
-        private static bool IsAutoStartEnabled()
-        {
-            using var key = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true);
-            return key?.GetValue("MyWallpaperApp") != null;
-        }
-
-        private static void SetAutoStart(bool enable)
-        {
-            try
-            {
-                using var key = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true);
-                if (key != null)
-                {
-                    if (enable)
+                    using var key = Registry.CurrentUser.OpenSubKey(Constants.AutoStartKey, true);
+                    if (key != null)
                     {
-                        string appPath = Process.GetCurrentProcess().MainModule?.FileName ?? "";
-                        key.SetValue("MyWallpaperApp", $"\"{appPath}\"");
+                        if (enable)
+                            key.SetValue(Constants.AutoStartValue,
+                                         $"\"{Process.GetCurrentProcess().MainModule?.FileName}\"");
+                        else
+                            key.DeleteValue(Constants.AutoStartValue, false);
+
+                        item.Checked = enable;
                     }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"设置开机自启动失败：{ex.Message}",
+                                    "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+
+            private static bool IsAutoStartEnabled()
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(Constants.AutoStartKey);
+                return key?.GetValue(Constants.AutoStartValue) != null;
+            }
+
+            private void OpenConfigEditor(object? s, EventArgs e)
+            {
+                using var dlg = new ConfigEditorForm(_configPath);
+                if (_updater != null) dlg.SetWallpaperUpdater(_updater);
+
+                dlg.ShowDialog();
+
+                if (dlg.ConfigChanged && _updater == null)
+                    Application.Restart();
+            }
+
+            private void OpenImageFolder(object? s, EventArgs e)
+            {
+                try
+                {
+                    var cfg = JsonSerializer.Deserialize<Configuration>(
+                                  File.ReadAllText(_configPath));
+
+                    if (cfg != null && Directory.Exists(cfg.FolderPath))
+                        Process.Start("explorer.exe", cfg.FolderPath);
                     else
-                    {
-                        key.DeleteValue("MyWallpaperApp", false);
-                    }
+                        throw new DirectoryNotFoundException();
                 }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(
-                    $"设置开机自启动时发生错误：{ex.Message}",
-                    "错误",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
-            }
-        }
-
-        private static void OnExit(object? sender, EventArgs e)
-        {
-            updater?.Dispose();
-            trayIcon?.Dispose();
-            appIcon?.Dispose();
-            Application.Exit();
-        }
-
-        private static void OnProcessExit(object? sender, EventArgs e)
-        {
-            updater?.Dispose();
-            trayIcon?.Dispose();
-            appIcon?.Dispose();
-        }
-
-        static void ValidateConfiguration(Configuration config)
-        {
-            if (string.IsNullOrWhiteSpace(config.FolderPath))
-                throw new ArgumentException("必须设置源图片文件夹路径。");
-
-            if (!Directory.Exists(config.FolderPath))
-                throw new DirectoryNotFoundException($"指定的源图片文件夹 '{config.FolderPath}' 不存在。");
-
-            if (config.Width <= 0 || config.Height <= 0)
-                throw new ArgumentException("壁纸宽度和高度必须为正数。");
-
-            if (config.Rows <= 0 || config.Cols <= 0)
-                throw new ArgumentException("行数和列数必须为正数。");
-
-            if (config.MinInterval <= 0)
-                throw new ArgumentException("最小更新间隔必须为正数。");
-
-            if (config.MaxInterval < config.MinInterval)
-                throw new ArgumentException("最大更新间隔不能小于最小更新间隔。");
-        }
-
-        public static void RestartApplication()
-        {
-            try
-            {
-                string appPath = Process.GetCurrentProcess().MainModule?.FileName ?? "";
-                if (!string.IsNullOrEmpty(appPath))
+                catch (Exception ex)
                 {
-                    Process.Start(appPath);
-                    Application.Exit();
+                    MessageBox.Show($"无法打开图片文件夹：{ex.Message}",
+                                    "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
-            catch (Exception ex)
+
+            private void ExitApp(object? s, EventArgs e) => ExitThread();
+
+            // ———————————————————— ApplicationContext 生命周期 ————————————————————
+            protected override void ExitThreadCore()
             {
-                MessageBox.Show(
-                    $"重启应用程序时发生错误：{ex.Message}",
-                    "错误",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
+                _updater?.Dispose();
+
+                if (_trayIcon != null)
+                {
+                    _trayIcon.Visible = false;
+                    _trayIcon.Dispose();
+                }
+
+                base.ExitThreadCore();
+            }
+
+            // ———————————————————— 辅助静态方法 ————————————————————
+            private static bool HasImageFiles(string folder)
+            {
+                return Directory.Exists(folder) &&
+                       Directory.EnumerateFiles(folder, "*.*", SearchOption.TopDirectoryOnly)
+                                .Any(f => Constants.AllowedExt
+                                              .Contains(Path.GetExtension(f).ToLowerInvariant()) &&
+                                          !f.EndsWith("wallpaper.jpg",
+                                                      StringComparison.OrdinalIgnoreCase));
+            }
+
+            private static void ValidateConfiguration(Configuration c)
+            {
+                if (!Directory.Exists(c.FolderPath))
+                    throw new DirectoryNotFoundException($"源文件夹 '{c.FolderPath}' 不存在。");
+                if (c.Width  <= 0 || c.Height <= 0)
+                    throw new ArgumentException("壁纸宽高必须为正数。");
+                if (c.Rows   <= 0 || c.Cols   <= 0)
+                    throw new ArgumentException("行列数必须为正数。");
+                if (c.MinInterval <= 0)
+                    throw new ArgumentException("最小间隔必须为正数。");
+                if (c.MaxInterval < c.MinInterval)
+                    throw new ArgumentException("最大间隔不能小于最小间隔。");
+            }
+
+            /// <summary>异步复制文件。全部 ConfigureAwait(false) 以消除 UI 死锁风险。</summary>
+            private static async Task CopyFileAsync(string src, string dst, bool overwrite = false)
+            {
+                const int bufferSize = 81920;
+                await using var source = new FileStream(
+                    src, FileMode.Open, FileAccess.Read, FileShare.Read,
+                    bufferSize, useAsync: true);
+
+                await using var dest = new FileStream(
+                    dst,
+                    overwrite ? FileMode.Create : FileMode.CreateNew,
+                    FileAccess.Write, FileShare.None,
+                    bufferSize, useAsync: true);
+
+                await source.CopyToAsync(dest, bufferSize).ConfigureAwait(false);
             }
         }
     }
-} 
+}
