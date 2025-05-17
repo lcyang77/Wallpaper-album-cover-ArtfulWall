@@ -5,6 +5,14 @@
 ## 项目简介
 ArtfulWall 是一款专为 Windows 平台设计的智能壁纸自动更换程序。它提供强大的多显示器支持，能够为每个屏幕独立设置壁纸，并智能适应不同分辨率、方向及 DPI 缩放。程序支持壁纸网格拼贴、自定义切换间隔、系统托盘快捷操作、可视化配置编辑（支持热更新）、配置备份与恢复以及开机自启动等丰富特性。ArtfulWall 致力于为追求个性化、爱好音乐、专辑封面、桌面美学的用户提供流畅、稳定且高度可定制的壁纸体验。
 
+[![video](https://img.youtube.com/vi/LIOjDCaVK_E/maxresdefault.jpg)](https://www.youtube.com/watch?v=LIOjDCaVK_E)
+<table>
+  <tr>
+    <td><img src="images/dual_screen-min.png" width="100%"></td>
+    <td><img src="images/IMG_1173-min.JPG" width="100%"></td>
+  </tr>
+</table>
+
 ## 主要特性
 - **系统托盘运行**：程序常驻后台，通过右键托盘菜单可快速访问所有核心功能，如配置编辑、打开图片文件夹、设置开机自启及退出程序。
 - **高级多显示器支持**：
@@ -72,6 +80,7 @@ ArtfulWall 是一款专为 Windows 平台设计的智能壁纸自动更换程序
 
 ## 证书
 本项目采用 MIT License 许可，详情请参见 LICENSE 文件。
+
 ---
 
 # ArtfulWall - Automatic Wallpaper Updater
