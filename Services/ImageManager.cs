@@ -1,4 +1,4 @@
-//  ImageManager.cs
+// ImageManager.cs
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -14,53 +14,62 @@ namespace ArtfulWall.Services
 {
     public class ImageManager : IDisposable
     {
-        // 定义内部类 CacheItem 用于表示缓存中的一个项
+        // Defines an inner class representing a single cache entry
         private class CacheItem
         {
-            public Image<Rgba32>? Image { get; set; } // 图像对象
-            public LinkedListNode<string>? Node { get; set; } // 链表节点，用于实现LRU缓存机制
-            public long Size { get; set; } // 图像占用的字节大小
-            public DateTime LastAccessTime { get; set; } // 图像最后一次被访问的时间
+            public Image<Rgba32>? Image { get; set; }            // The cached image object
+            public LinkedListNode<string>? Node { get; set; }    // Node in the LRU linked list
+            public long Size { get; set; }                       // Size of the image in bytes
+            public DateTime LastAccessTime { get; set; }         // Timestamp of last access
         }
 
-        // 字典，用于存储图像的缓存
-        private readonly ConcurrentDictionary<string, CacheItem> _imageCache;
-        // 链表，用于实现最近最少使用（LRU）缓存淘汰策略
-        private readonly LinkedList<string> _lruList;
-        // 锁对象，用于同步访问 _lruList
-        private readonly object _lruLock = new object();
-        // 缓存最大容量
-        private readonly int _maxCacheSize;
-        // 定时器，用于定期清理缓存
-        private readonly Timer _cacheCleanupTimer;
+        private readonly ConcurrentDictionary<string, CacheItem> _imageCache;   // Thread-safe dictionary storing cache items
+        private readonly LinkedList<string> _lruList;                            // Linked list implementing LRU eviction order
+        private readonly object _lruLock = new object();                        // Lock object for synchronizing LRU list access
+        private readonly int _maxCacheSize;                                      // Maximum number of items allowed in cache
+        private readonly Timer _cacheCleanupTimer;                               // Timer for periodic cache cleanup
 
-        // 构造函数
+        /// <summary>
+        /// Initializes a new instance of ImageManager with optional cache size and cleanup interval.
+        /// </summary>
         public ImageManager(int maxCacheSize = 150, TimeSpan? cacheCleanupInterval = null)
         {
             _imageCache = new ConcurrentDictionary<string, CacheItem>();
             _lruList = new LinkedList<string>();
             _maxCacheSize = maxCacheSize;
-            // 初始化定时器，定期调用 CleanupCache 方法来清理缓存
-            _cacheCleanupTimer = new Timer(CleanupCache, null, cacheCleanupInterval ?? TimeSpan.FromMinutes(30), cacheCleanupInterval ?? Timeout.InfiniteTimeSpan);
+            // Set up a timer to call CleanupCache at the specified interval (default: 30 minutes)
+            _cacheCleanupTimer = new Timer(
+                CleanupCache,
+                null,
+                cacheCleanupInterval ?? TimeSpan.FromMinutes(30),
+                cacheCleanupInterval ?? Timeout.InfiniteTimeSpan);
         }
 
-        // 计算图像占用字节大小的方法
+        /// <summary>
+        /// Calculates the memory footprint of the image in bytes.
+        /// </summary>
         private long CalculateImageSize(Image<Rgba32> image)
         {
             int bytesPerPixel = image.PixelType.BitsPerPixel / 8;
             return image.Width * image.Height * bytesPerPixel;
         }
 
-        // 获取或添加图像的异步方法
+        /// <summary>
+        /// Retrieves an image from cache or loads and adds it if not present.
+        /// </summary>
+        /// <param name="path">File system path to the image.</param>
+        /// <param name="size">Desired dimensions for the image.</param>
         public async Task<Image<Rgba32>?> GetOrAddImageAsync(string path, Size size)
         {
+            // Generate a cache key based on file path, hash, and size
             string key = await GetCacheKeyAsync(path).ConfigureAwait(false);
-            // 尝试从缓存中获取图像
+
+            // Attempt to retrieve from cache
             if (_imageCache.TryGetValue(key, out CacheItem cacheItem))
             {
                 lock (_lruLock)
                 {
-                    // 更新链表，将访问的节点移动到链表尾部
+                    // Move accessed node to the end of the LRU list
                     _lruList.Remove(cacheItem.Node);
                     _lruList.AddLast(cacheItem.Node);
                     cacheItem.LastAccessTime = DateTime.Now;
@@ -68,7 +77,7 @@ namespace ArtfulWall.Services
                 return cacheItem.Image;
             }
 
-            // 如果缓存中没有找到，加载新图像
+            // If not in cache, load and resize the image
             try
             {
                 var image = await LoadAndResizeImageAsync(path, size).ConfigureAwait(false);
@@ -88,7 +97,7 @@ namespace ArtfulWall.Services
                     lock (_lruLock)
                     {
                         _lruList.AddLast(node);
-                        // 如果缓存大小超过限制，则移除最少使用的项
+                        // Evict least recently used item if cache exceeds maximum size
                         if (_imageCache.Count > _maxCacheSize)
                         {
                             RemoveLeastRecentlyUsedItem();
@@ -105,47 +114,47 @@ namespace ArtfulWall.Services
             }
         }
 
-        // 生成缓存键的异步方法
+        /// <summary>
+        /// Generates a unique cache key for the file based on checksum and file size.
+        /// </summary>
         private async Task<string> GetCacheKeyAsync(string filePath)
         {
-            using (var stream = File.OpenRead(filePath))
-            {
-                var sha = System.Security.Cryptography.SHA256.Create();
-                byte[] checksum = await Task.Run(() => sha.ComputeHash(stream)).ConfigureAwait(false);
-                string hash = BitConverter.ToString(checksum).Replace("-", String.Empty);
-                long fileSize = new FileInfo(filePath).Length;
-                return $"{filePath}_{hash}_{fileSize}";
-            }
+            using var stream = File.OpenRead(filePath);
+            var sha = System.Security.Cryptography.SHA256.Create();
+            byte[] checksum = await Task.Run(() => sha.ComputeHash(stream)).ConfigureAwait(false);
+            string hash = BitConverter.ToString(checksum).Replace("-", string.Empty);
+            long fileSize = new FileInfo(filePath).Length;
+            return $"{filePath}_{hash}_{fileSize}";
         }
 
-        // 加载和调整图像大小的异步方法
+        /// <summary>
+        /// Loads an image from disk, crops it to a square if necessary, and resizes to target dimensions.
+        /// </summary>
         private async Task<Image<Rgba32>> LoadAndResizeImageAsync(string path, Size targetSize)
         {
             return await Task.Run(() =>
             {
                 using var image = Image.Load<Rgba32>(path);
 
-                // 如果图像不是正方形，先裁剪成正方形
+                // Crop to square centered region if dimensions are not equal
                 if (image.Width != image.Height)
                 {
-                    // 计算需要裁剪的尺寸，取宽和高中的较小值
                     int squareSize = Math.Min(image.Width, image.Height);
-                    // 计算裁剪区域的左上角坐标，以确保裁剪区域以图像中心为中心
                     int cropX = (image.Width - squareSize) / 2;
                     int cropY = (image.Height - squareSize) / 2;
-                    // 创建裁剪区域
                     var cropRectangle = new Rectangle(cropX, cropY, squareSize, squareSize);
-                    // 执行裁剪
                     image.Mutate(x => x.Crop(cropRectangle));
                 }
 
-                // 调整图像大小为目标尺寸
+                // Resize the image to the requested dimensions
                 image.Mutate(x => x.Resize(targetSize.Width, targetSize.Height));
                 return image.Clone();
             }).ConfigureAwait(false);
         }
 
-        // 移除最少使用的缓存项的方法
+        /// <summary>
+        /// Removes the least recently used item from the cache and frees resources.
+        /// </summary>
         private void RemoveLeastRecentlyUsedItem()
         {
             lock (_lruLock)
@@ -155,54 +164,61 @@ namespace ArtfulWall.Services
                     var key = _lruList.First.Value;
                     if (_imageCache.TryRemove(key, out CacheItem? cacheItem))
                     {
-                        cacheItem.Image?.Dispose(); // 释放图像资源
+                        cacheItem.Image?.Dispose();
                         _lruList.RemoveFirst();
                     }
                 }
             }
         }
 
-        // 清理缓存的方法
+        /// <summary>
+        /// Periodically called to enforce cache size limits by removing large or stale items.
+        /// </summary>
         private void CleanupCache(object state)
         {
             lock (_lruLock)
             {
                 var itemsToRemove = _imageCache.Values
-                    .OrderByDescending(item => item.Size) // 先按大小排序
-                    .ThenBy(item => item.LastAccessTime) // 再按访问时间排序
-                    .TakeWhile(_ => _imageCache.Count > _maxCacheSize) // 选取足够数量的项目移除，以满足缓存大小限制
-                    .Select(item => item.Node?.Value).ToList();
+                    .OrderByDescending(item => item.Size)        // Sort by size descending
+                    .ThenBy(item => item.LastAccessTime)         // Then by oldest access time
+                    .TakeWhile(_ => _imageCache.Count > _maxCacheSize)
+                    .Select(item => item.Node?.Value)
+                    .ToList();
 
                 foreach (var key in itemsToRemove)
                 {
                     if (_imageCache.TryRemove(key, out CacheItem? cacheItem))
                     {
-                        cacheItem.Image?.Dispose(); // 释放图像资源
+                        cacheItem.Image?.Dispose();
                         _lruList.Remove(cacheItem.Node);
                     }
                 }
             }
         }
 
-        // 清空缓存的方法
+        /// <summary>
+        /// Clears all cache entries and releases their image resources.
+        /// </summary>
         public void ClearCache()
         {
             lock (_lruLock)
             {
                 foreach (var item in _imageCache.Values)
                 {
-                    item.Image?.Dispose(); // 释放所有图像资源
+                    item.Image?.Dispose();
                 }
                 _imageCache.Clear();
                 _lruList.Clear();
             }
         }
 
-        // 实现 IDisposable 接口的 Dispose 方法，用于释放资源
+        /// <summary>
+        /// Disposes the ImageManager, clearing cache and stopping the cleanup timer.
+        /// </summary>
         public void Dispose()
         {
-            ClearCache(); // 清空缓存
-            _cacheCleanupTimer.Dispose(); // 停止并释放定时器资源
+            ClearCache();                  // Release all cached image resources
+            _cacheCleanupTimer.Dispose();  // Stop and dispose the cleanup timer
         }
     }
-} 
+}

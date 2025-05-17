@@ -7,59 +7,82 @@ namespace ArtfulWall.Utils
 {
     public static class WallpaperSetter
     {
-        // 定义与Windows API相关的常量
+        // Define constants related to the Windows API for setting desktop wallpaper
         private const int SPI_SETDESKWALLPAPER = 20;
-        private const int SPIF_UPDATEINIFILE = 0x01;
-        private const int SPIF_SENDCHANGE = 0x02;
+        private const int SPIF_UPDATEINIFILE   = 0x01;
+        private const int SPIF_SENDCHANGE      = 0x02;
 
-        // 导入user32.dll中的SystemParametersInfo函数，用于设置壁纸
+        // Import the SystemParametersInfo function from user32.dll to apply the wallpaper change
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
-        private static extern int SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni);
+        private static extern int SystemParametersInfo(
+            int uAction,
+            int uParam,
+            string lpvParam,
+            int fuWinIni
+        );
 
-        // 公共方法，用于设置壁纸
+        /// <summary>
+        /// Public method to set the desktop wallpaper.
+        /// </summary>
+        /// <param name="path">The full file path of the image to use as wallpaper.</param>
         public static void Set(string path)
         {
-            // 验证壁纸路径的有效性
+            // Validate that the provided path is non-empty and points to an existing file
             ValidateWallpaperPath(path);
 
-            // 判断操作系统是否为Windows
+            // Determine if the current OS is Windows
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                // 如果是Windows，则设置壁纸
+                // On Windows, perform the wallpaper update
                 SetWindowsWallpaper(path);
             }
             else
             {
-                // 对于其他操作系统，抛出不支持的异常
-                throw new PlatformNotSupportedException("当前操作系统不支持自动设置壁纸。");
+                // On non-Windows platforms, indicate lack of support
+                throw new PlatformNotSupportedException(
+                    "The current operating system does not support automatic wallpaper setting."
+                );
             }
         }
 
-        // Windows平台设置壁纸的方法
+        /// <summary>
+        /// Internal helper to set the wallpaper on Windows platforms.
+        /// </summary>
+        /// <param name="path">The file path of the wallpaper image.</param>
         private static void SetWindowsWallpaper(string path)
         {
-            // 调用SystemParametersInfo函数设置壁纸
-            if (SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, path, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE) == 0)
+            // Invoke the native API; a return value of 0 indicates failure
+            if (SystemParametersInfo(
+                    SPI_SETDESKWALLPAPER,
+                    0,
+                    path,
+                    SPIF_UPDATEINIFILE | SPIF_SENDCHANGE
+                ) == 0)
             {
-                // 如果返回值为0，表示设置失败，抛出异常
-                throw new InvalidOperationException("无法设置桌面壁纸。可能是由于操作系统错误或权限不足。");
+                // Throw an exception if the API call fails
+                throw new InvalidOperationException(
+                    "Unable to set desktop wallpaper. This may be due to an operating system error or insufficient permissions."
+                );
             }
         }
 
-        // 验证壁纸路径的方法
+        /// <summary>
+        /// Validates that the wallpaper path is not null or empty and that the file exists.
+        /// </summary>
+        /// <param name="path">The file path to validate.</param>
         private static void ValidateWallpaperPath(string path)
         {
-            // 检查路径是否为空或空白
+            // Ensure the path is not null, empty, or whitespace
             if (string.IsNullOrWhiteSpace(path))
             {
-                throw new ArgumentException("路径不能为空或空白。", nameof(path));
+                throw new ArgumentException("Path cannot be null or whitespace.", nameof(path));
             }
 
-            // 检查文件是否存在
+            // Ensure the file exists at the specified path
             if (!File.Exists(path))
             {
-                throw new FileNotFoundException("找不到指定的文件。", path);
+                throw new FileNotFoundException("The specified file could not be found.", path);
             }
         }
     }
-} 
+}

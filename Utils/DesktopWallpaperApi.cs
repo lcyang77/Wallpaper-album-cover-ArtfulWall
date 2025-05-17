@@ -5,10 +5,16 @@ using System.IO;
 
 namespace ArtfulWall.Utils
 {
+    /// <summary>
+    /// Provides methods to interact with the Windows Desktop Wallpaper COM interface.
+    /// </summary>
     public static class DesktopWallpaperApi
     {
         #region COM Interop Definitions
 
+        /// <summary>
+        /// Represents the coordinates of the monitor rectangle.
+        /// </summary>
         [StructLayout(LayoutKind.Sequential)]
         public struct RECT
         {
@@ -18,6 +24,9 @@ namespace ArtfulWall.Utils
             public int Bottom;
         }
 
+        /// <summary>
+        /// Enum for wallpaper positioning modes.
+        /// </summary>
         public enum DESKTOP_WALLPAPER_POSITION
         {
             DWPOS_CENTER = 0,
@@ -28,6 +37,9 @@ namespace ArtfulWall.Utils
             DWPOS_SPAN = 5
         }
 
+        /// <summary>
+        /// COM interface for desktop wallpaper management.
+        /// </summary>
         [ComImport]
         [Guid("B92B56A9-8B55-4E14-9A89-0199BBB6F93B")]
         [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -36,36 +48,39 @@ namespace ArtfulWall.Utils
             void SetWallpaper([MarshalAs(UnmanagedType.LPWStr)] string monitorID, [MarshalAs(UnmanagedType.LPWStr)] string wallpaper);
             [return: MarshalAs(UnmanagedType.LPWStr)]
             string GetWallpaper([MarshalAs(UnmanagedType.LPWStr)] string monitorID);
-            
+
             [return: MarshalAs(UnmanagedType.LPWStr)]
             string GetMonitorDevicePathAt(uint monitorIndex);
             [return: MarshalAs(UnmanagedType.U4)]
             uint GetMonitorDevicePathCount();
-            
+
             [return: MarshalAs(UnmanagedType.Struct)]
             RECT GetMonitorRECT([MarshalAs(UnmanagedType.LPWStr)] string monitorID);
-            
+
             void SetBackgroundColor([MarshalAs(UnmanagedType.U4)] uint color);
             [return: MarshalAs(UnmanagedType.U4)]
             uint GetBackgroundColor();
-            
+
             void SetPosition([MarshalAs(UnmanagedType.I4)] DESKTOP_WALLPAPER_POSITION position);
             [return: MarshalAs(UnmanagedType.I4)]
             DESKTOP_WALLPAPER_POSITION GetPosition();
-            
+
             void SetSlideshow(IntPtr items);
             IntPtr GetSlideshow();
-            
+
             void SetSlideshowOptions(int options, uint slideshowTick);
             void GetSlideshowOptions(out int options, out uint slideshowTick);
-            
+
             void AdvanceSlideshow([MarshalAs(UnmanagedType.LPWStr)] string monitorID, int direction);
-            
+
             DESKTOP_WALLPAPER_POSITION GetStatus();
-            
+
             bool Enable();
         }
 
+        /// <summary>
+        /// COM class for IDesktopWallpaper implementation.
+        /// </summary>
         [ComImport]
         [Guid("C2CF3110-460E-4fc1-B9D0-8A1C0C9CC4BD")]
         public class DesktopWallpaper
@@ -74,19 +89,22 @@ namespace ArtfulWall.Utils
 
         #endregion
 
-        // 检查系统是否支持每显示器壁纸功能
+        /// <summary>
+        /// Checks if the system supports the per-monitor wallpaper feature.
+        /// </summary>
+        /// <returns>True if supported; otherwise, false.</returns>
         public static bool IsPerMonitorWallpaperSupported()
         {
             try
             {
-                // Windows 8及以上支持IDesktopWallpaper接口
-                if (Environment.OSVersion.Version.Major < 6 || 
+                // Windows 8 and above support the IDesktopWallpaper interface
+                if (Environment.OSVersion.Version.Major < 6 ||
                     (Environment.OSVersion.Version.Major == 6 && Environment.OSVersion.Version.Minor < 2))
                 {
                     return false;
                 }
 
-                // 尝试创建接口实例
+                // Try to create the COM interface instance
                 var wpInstance = (IDesktopWallpaper)new DesktopWallpaper();
                 uint count = wpInstance.GetMonitorDevicePathCount();
                 return count > 0;
@@ -97,61 +115,64 @@ namespace ArtfulWall.Utils
             }
         }
 
-        // 设置每个显示器的壁纸
+        /// <summary>
+        /// Sets wallpapers for all monitors using specified paths.
+        /// </summary>
+        /// <param name="wallpaperPaths">Dictionary of monitor IDs and wallpaper file paths.</param>
         public static void SetWallpaperForAllMonitors(Dictionary<string, string> wallpaperPaths)
         {
             if (!IsPerMonitorWallpaperSupported())
             {
-                throw new PlatformNotSupportedException("当前系统不支持每显示器壁纸功能");
+                throw new PlatformNotSupportedException("The current system does not support per-monitor wallpaper feature");
             }
 
-            // 记录开始时间，用于实现超时保护
+            // Record start time for timeout protection
             DateTime startTime = DateTime.Now;
-            const int MaxExecutionTimeMs = 5000; // 最大执行时间5秒
-            const int MaxRetryCount = 2; // 最大重试次数
-            
-            // 验证壁纸路径
+            const int MaxExecutionTimeMs = 5000; // Maximum execution time 5 seconds
+            const int MaxRetryCount = 2;        // Maximum retry attempts
+
+            // Validate wallpaper paths
             foreach (var path in wallpaperPaths.Values)
             {
                 if (!File.Exists(path))
                 {
-                    throw new FileNotFoundException($"壁纸文件不存在: {path}");
+                    throw new FileNotFoundException($"Wallpaper file not found: {path}");
                 }
             }
 
             try
             {
                 var wpInstance = (IDesktopWallpaper)new DesktopWallpaper();
-                
-                // 设置为"填充"模式，确保壁纸填满屏幕
+
+                // Set position to "Fill" mode to ensure wallpaper fills the screen
                 wpInstance.SetPosition(DESKTOP_WALLPAPER_POSITION.DWPOS_FILL);
-                
+
                 int successCount = 0;
-                
-                // 对每个显示器路径，使用重试机制设置壁纸
+
+                // Iterate through each monitor and apply retry mechanism
                 foreach (var kvp in wallpaperPaths)
                 {
                     string monitorId = kvp.Key;
                     string wallpaperPath = kvp.Value;
-                    
+
                     if (!File.Exists(wallpaperPath))
                         continue;
-                    
-                    // 实现重试机制
+
                     int retryCount = 0;
                     bool success = false;
-                    
+
                     while (!success && retryCount < MaxRetryCount)
                     {
                         try
                         {
-                            // 检查是否超时
+                            // Check for timeout
                             if ((DateTime.Now - startTime).TotalMilliseconds > MaxExecutionTimeMs)
                             {
-                                Console.WriteLine("设置壁纸操作超时，已完成部分设置");
+                                Console.WriteLine("Wallpaper setting operation timed out, partial completion");
                                 return;
                             }
-                            
+
+                            // Set wallpaper for the current monitor
                             wpInstance.SetWallpaper(monitorId, wallpaperPath);
                             success = true;
                             successCount++;
@@ -161,47 +182,50 @@ namespace ArtfulWall.Utils
                             retryCount++;
                             if (retryCount >= MaxRetryCount)
                             {
-                                Console.WriteLine($"设置显示器 {monitorId} 壁纸失败，已达最大重试次数: {ex.Message}");
+                                Console.WriteLine($"Failed to set wallpaper for monitor {monitorId}, reached max retry count: {ex.Message}");
                             }
                             else
                             {
-                                Console.WriteLine($"尝试设置显示器 {monitorId} 壁纸失败，正在重试 ({retryCount}/{MaxRetryCount}): {ex.Message}");
-                                // 短暂延迟后重试
+                                Console.WriteLine($"Attempt to set wallpaper for monitor {monitorId} failed, retrying ({retryCount}/{MaxRetryCount}): {ex.Message}");
+                                // Short delay before retrying
                                 System.Threading.Thread.Sleep(200);
                             }
                         }
                     }
                 }
-                
-                Console.WriteLine($"成功设置了 {successCount}/{wallpaperPaths.Count} 个显示器的壁纸");
+
+                Console.WriteLine($"Successfully set wallpapers for {successCount}/{wallpaperPaths.Count} monitors");
             }
             catch (COMException comEx)
             {
-                Console.WriteLine($"设置每显示器壁纸时出现COM错误: 0x{comEx.ErrorCode:X}, {comEx.Message}");
+                Console.WriteLine($"COM error occurred while setting per-monitor wallpapers: 0x{comEx.ErrorCode:X}, {comEx.Message}");
                 throw;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"设置每显示器壁纸时出错: {ex.Message}");
+                Console.WriteLine($"An error occurred while setting per-monitor wallpapers: {ex.Message}");
                 throw;
             }
         }
 
-        // 获取所有显示器的ID
+        /// <summary>
+        /// Retrieves information (IDs and rectangles) for all monitors.
+        /// </summary>
+        /// <returns>Dictionary of monitor IDs and their rectangles.</returns>
         public static Dictionary<string, RECT> GetAllMonitorInfo()
         {
             var result = new Dictionary<string, RECT>();
-            
+
             if (!IsPerMonitorWallpaperSupported())
             {
                 return result;
             }
-            
+
             try
             {
                 var wpInstance = (IDesktopWallpaper)new DesktopWallpaper();
                 uint count = wpInstance.GetMonitorDevicePathCount();
-                
+
                 for (uint i = 0; i < count; i++)
                 {
                     string monitorId = wpInstance.GetMonitorDevicePathAt(i);
@@ -211,13 +235,16 @@ namespace ArtfulWall.Utils
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"获取显示器信息时出错: {ex.Message}");
+                Console.WriteLine($"An error occurred while retrieving monitor information: {ex.Message}");
             }
-            
+
             return result;
         }
 
-        // 兼容模式下设置单一壁纸
+        /// <summary>
+        /// Sets a single wallpaper for all monitors in compatibility mode.
+        /// </summary>
+        /// <param name="wallpaperPath">The wallpaper file path.</param>
         public static void SetSingleWallpaper(string wallpaperPath)
         {
             try
@@ -226,8 +253,8 @@ namespace ArtfulWall.Utils
                 {
                     var wpInstance = (IDesktopWallpaper)new DesktopWallpaper();
                     wpInstance.SetPosition(DESKTOP_WALLPAPER_POSITION.DWPOS_FILL);
-                    
-                    // 设置所有显示器使用相同壁纸
+
+                    // Set the same wallpaper for all monitors
                     uint count = wpInstance.GetMonitorDevicePathCount();
                     for (uint i = 0; i < count; i++)
                     {
@@ -237,16 +264,16 @@ namespace ArtfulWall.Utils
                 }
                 else
                 {
-                    // 回退到传统壁纸设置
+                    // Fallback to traditional wallpaper setting
                     WallpaperSetter.Set(wallpaperPath);
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"设置单一壁纸时出错: {ex.Message}");
-                // 回退到传统壁纸设置
+                Console.WriteLine($"An error occurred while setting single wallpaper: {ex.Message}");
+                // Fallback to traditional wallpaper setting
                 WallpaperSetter.Set(wallpaperPath);
             }
         }
     }
-} 
+}

@@ -25,22 +25,26 @@ namespace ArtfulWall.Core
 
     public static class Program
     {
-        /// <summary>是否以“便携模式”运行 —— 供外部组件读取。</summary>
+        /// <summary>
+        /// Indicates whether the application is running in portable mode -- for external components to read.
+        /// </summary>
         public static bool IsPortable { get; private set; }
 
         [STAThread]
         private static void Main(string[] args)
         {
+            // Initialize application configuration for high DPI, default font, etc.
             ApplicationConfiguration.Initialize();
+            // Start the tray application context with command-line arguments
             Application.Run(new TrayAppContext(args));
         }
 
         /// <summary>
-        /// WinForms 托盘应用上下文：负责消息循环、资源管理和退出逻辑。
+        /// WinForms tray application context: manages the message loop, resources, and exit logic.
         /// </summary>
         private sealed class TrayAppContext : ApplicationContext
         {
-            // ————— 字段 —————
+            // -------------------- Fields --------------------
             private NotifyIcon?       _trayIcon;
             private WallpaperUpdater? _updater;
 
@@ -48,10 +52,10 @@ namespace ArtfulWall.Core
             private readonly string _baseConfigPath;
             private readonly string _backupPath;
 
-            // ———————————————————— 构造 & 初始化 ————————————————————
+            // ---------------- Constructor & Initialization ----------------
             public TrayAppContext(string[] args)
             {
-                // 1️⃣ 解析配置路径（含便携模式判定） ---------------------------
+                // 1. Parse configuration paths and determine portable mode
                 string exeDir   = AppDomain.CurrentDomain.BaseDirectory;
                 _baseConfigPath = Path.Combine(exeDir, "config.json");
 
@@ -67,13 +71,14 @@ namespace ArtfulWall.Core
                        exeDir.StartsWith(Environment.GetFolderPath(Environment.SpecialFolder.Windows),
                                          StringComparison.OrdinalIgnoreCase);
 
+                // Determine portable mode by argument or presence of base config outside Program Files or Windows
                 IsPortable = args.Contains("--portable") ||
                              (File.Exists(_baseConfigPath) && !inProgramFiles);
 
                 _configPath = IsPortable ? _baseConfigPath : roamingConfigPath;
                 _backupPath = Path.Combine(Path.GetDirectoryName(_configPath)!, Constants.BackupFileName);
 
-                // ⏱️ 2️⃣ 确保配置文件存在 —— 取消同步等待死锁风险
+                // 2. Ensure configuration file exists asynchronously to avoid deadlocks
                 try
                 {
                     EnsureConfigFilePresentAsync()
@@ -83,31 +88,33 @@ namespace ArtfulWall.Core
                 }
                 catch
                 {
+                    // Exit if configuration cannot be prepared
                     ExitThread();
                     return;
                 }
 
-                // 3️⃣ 读取 & 校验配置 ------------------------------------------
+                // 3. Load and validate configuration
                 if (!TryLoadConfiguration(out Configuration cfg)) { ExitThread(); return; }
 
-                // 无图片预警
+                // Warn if no image files are found in source folder
                 if (!HasImageFiles(cfg.FolderPath))
                 {
-                    MessageBox.Show($"在目录 \"{cfg.FolderPath}\" 中未找到任何图片（jpg/png/bmp）。",
-                                    "未找到图片", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show(
+                        $"No images (jpg/png/bmp) found in directory \"{cfg.FolderPath}\".",
+                        "No Images Found", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
 
-                // 4️⃣ 启动业务核心（WallpaperUpdater） -------------------------
+                // 4. Start the core wallpaper updater service
                 if (!StartUpdater(cfg))  { ExitThread(); return; }
 
-                // 5️⃣ 创建 NotifyIcon & 菜单 -----------------------------------
+                // 5. Create system tray icon and context menu
                 CreateNotifyIcon(exeDir);
             }
 
-            // ———————————————————— 配置 / 启动 ————————————————————
+            // ---------------- Configuration / Startup ----------------
 
             /// <summary>
-            /// 异步确保配置文件存在。使用 ConfigureAwait(false) 消除 UI 线程死锁风险。
+            /// Asynchronously ensure the configuration file exists. Uses ConfigureAwait(false) to avoid UI thread deadlock.
             /// </summary>
             private async Task EnsureConfigFilePresentAsync()
             {
@@ -120,16 +127,20 @@ namespace ArtfulWall.Core
                     else if (File.Exists(_baseConfigPath))
                         await CopyFileAsync(_baseConfigPath, _configPath).ConfigureAwait(false);
                     else
-                        throw new FileNotFoundException("未找到任何有效配置文件！");
+                        throw new FileNotFoundException("No valid configuration file found!");
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"准备配置文件失败：{ex.Message}",
-                                    "配置错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(
+                        $"Failed to prepare configuration file: {ex.Message}",
+                        "Configuration Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     throw;
                 }
             }
 
+            /// <summary>
+            /// Attempt to load and validate the configuration.
+            /// </summary>
             private bool TryLoadConfiguration(out Configuration cfg)
             {
                 cfg = default!;
@@ -137,16 +148,17 @@ namespace ArtfulWall.Core
                 {
                     string json = File.ReadAllText(_configPath);
                     cfg = JsonSerializer.Deserialize<Configuration>(json)
-                          ?? throw new JsonException("反序列化返回 null");
+                          ?? throw new JsonException("Deserialization returned null");
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"读取或解析配置失败：{ex.Message}",
-                                    "配置错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(
+                        $"Failed to read or parse configuration: {ex.Message}",
+                        "Configuration Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return false;
                 }
 
-                // 自动补全 DestFolder
+                // Auto-complete destination folder if missing or invalid
                 if (string.IsNullOrWhiteSpace(cfg.DestFolder) || !Directory.Exists(cfg.DestFolder))
                 {
                     cfg.DestFolder = Path.Combine(cfg.FolderPath, "my_wallpaper");
@@ -156,21 +168,25 @@ namespace ArtfulWall.Core
                         JsonSerializer.Serialize(cfg, new JsonSerializerOptions { WriteIndented = true }));
                 }
 
-                // 严格校验字段
+                // Strictly validate all configuration fields
                 try
                 {
                     ValidateConfiguration(cfg);
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"配置校验失败：{ex.Message}",
-                                    "配置错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(
+                        $"Configuration validation failed: {ex.Message}",
+                        "Configuration Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return false;
                 }
 
                 return true;
             }
 
+            /// <summary>
+            /// Start the wallpaper updater service and schedule a backup of the configuration.
+            /// </summary>
             private bool StartUpdater(Configuration c)
             {
                 try
@@ -184,33 +200,34 @@ namespace ArtfulWall.Core
                         c);
                     _updater.Start();
 
-                    // 启动成功后异步备份
+                    // After successful start, back up configuration asynchronously
                     _ = Task.Run(() => File.Copy(_configPath, _backupPath, true));
                     return true;
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"启动壁纸更新失败：{ex.Message}",
-                                    "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(
+                        $"Failed to start wallpaper updater: {ex.Message}",
+                        "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return false;
                 }
             }
 
-            // ———————————————————— NotifyIcon & 菜单 ————————————————————
+            // ---------------- NotifyIcon & Menu ----------------
             private void CreateNotifyIcon(string exeDir)
             {
                 var menu = new ContextMenuStrip
                 {
                     Items =
                     {
-                        new ToolStripMenuItem("开机自启动", null, ToggleAutoStart)
+                        new ToolStripMenuItem("Auto-start on boot", null, ToggleAutoStart)
                         {
                             Checked = IsAutoStartEnabled()
                         },
-                        new ToolStripMenuItem("配置编辑器",   null, OpenConfigEditor),
-                        new ToolStripMenuItem("打开图片文件夹", null, OpenImageFolder),
+                        new ToolStripMenuItem("Configuration Editor",   null, OpenConfigEditor),
+                        new ToolStripMenuItem("Open Image Folder", null, OpenImageFolder),
                         new ToolStripSeparator(),
-                        new ToolStripMenuItem("退出", null, ExitApp)
+                        new ToolStripMenuItem("Exit", null, ExitApp)
                     }
                 };
 
@@ -223,7 +240,7 @@ namespace ArtfulWall.Core
                 };
             }
 
-            // ———————————————————— 菜单回调 ————————————————————
+            // ---------------- Menu Callbacks ----------------
             private void ToggleAutoStart(object? sender, EventArgs e)
             {
                 if (sender is not ToolStripMenuItem item) return;
@@ -245,8 +262,9 @@ namespace ArtfulWall.Core
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"设置开机自启动失败：{ex.Message}",
-                                    "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(
+                        $"Failed to set auto-start on boot: {ex.Message}",
+                        "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
 
@@ -263,6 +281,7 @@ namespace ArtfulWall.Core
 
                 dlg.ShowDialog();
 
+                // If config changed before updater start, restart application
                 if (dlg.ConfigChanged && _updater == null)
                     Application.Restart();
             }
@@ -281,18 +300,21 @@ namespace ArtfulWall.Core
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"无法打开图片文件夹：{ex.Message}",
-                                    "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(
+                        $"Failed to open image folder: {ex.Message}",
+                        "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
 
             private void ExitApp(object? s, EventArgs e) => ExitThread();
 
-            // ———————————————————— ApplicationContext 生命周期 ————————————————————
+            // ---------------- ApplicationContext Lifecycle ----------------
             protected override void ExitThreadCore()
             {
+                // Dispose updater service
                 _updater?.Dispose();
 
+                // Hide and dispose tray icon
                 if (_trayIcon != null)
                 {
                     _trayIcon.Visible = false;
@@ -302,7 +324,7 @@ namespace ArtfulWall.Core
                 base.ExitThreadCore();
             }
 
-            // ———————————————————— 辅助静态方法 ————————————————————
+            // ---------------- Helper Static Methods ----------------
             private static bool HasImageFiles(string folder)
             {
                 return Directory.Exists(folder) &&
@@ -316,18 +338,20 @@ namespace ArtfulWall.Core
             private static void ValidateConfiguration(Configuration c)
             {
                 if (!Directory.Exists(c.FolderPath))
-                    throw new DirectoryNotFoundException($"源文件夹 '{c.FolderPath}' 不存在。");
+                    throw new DirectoryNotFoundException($"Source folder '{c.FolderPath}' does not exist.");
                 if (c.Width  <= 0 || c.Height <= 0)
-                    throw new ArgumentException("壁纸宽高必须为正数。");
+                    throw new ArgumentException("Wallpaper width and height must be positive.");
                 if (c.Rows   <= 0 || c.Cols   <= 0)
-                    throw new ArgumentException("行列数必须为正数。");
+                    throw new ArgumentException("Rows and columns must be positive.");
                 if (c.MinInterval <= 0)
-                    throw new ArgumentException("最小间隔必须为正数。");
+                    throw new ArgumentException("Minimum interval must be positive.");
                 if (c.MaxInterval < c.MinInterval)
-                    throw new ArgumentException("最大间隔不能小于最小间隔。");
+                    throw new ArgumentException("Maximum interval cannot be less than minimum interval.");
             }
 
-            /// <summary>异步复制文件。全部 ConfigureAwait(false) 以消除 UI 死锁风险。</summary>
+            /// <summary>
+            /// Asynchronously copy files. All ConfigureAwait(false) calls eliminate UI thread deadlock risk.
+            /// </summary>
             private static async Task CopyFileAsync(string src, string dst, bool overwrite = false)
             {
                 const int bufferSize = 81920;

@@ -9,28 +9,43 @@ using ArtfulWall.Services;
 
 namespace ArtfulWall.Models
 {
-    // 表示可在壁纸上绘制封面图像的网格区域，并管理其生命周期。
+    /// <summary>
+    /// Represents a grid area on the wallpaper where a cover image can be drawn and manages its lifecycle.
+    /// </summary>
     public class Grid : IDisposable
     {
         private readonly object _sync = new object();
         private string _currentCoverPath = string.Empty;
 
-        // 当前已绘制的封面图路径。
+        /// <summary>
+        /// The path of the currently drawn cover image.
+        /// </summary>
         public string CurrentCoverPath => _currentCoverPath;
     
-        // 网格在壁纸上的位置（浮点坐标）。
+        /// <summary>
+        /// The position of the grid on the wallpaper (floating-point coordinates).
+        /// </summary>
         public PointF Position { get; }
 
-        // 网格的尺寸（浮点宽高）。
+        /// <summary>
+        /// The size of the grid (floating-point width and height).
+        /// </summary>
         public SizeF Size { get; }
 
-        // 当前正在使用的封面图实例。
+        /// <summary>
+        /// The current cover image instance in use.
+        /// </summary>
         public Image<Rgba32>? CurrentCover { get; private set; }
 
         private readonly ImageManager _imageManager;
         private bool _disposed;
 
-        // 构造函数，用于初始化网格的位置、大小和 ImageManager 实例。
+        /// <summary>
+        /// Constructor to initialize the grid's position, size, and ImageManager instance.
+        /// </summary>
+        /// <param name="position">The top-left position of the grid on the wallpaper.</param>
+        /// <param name="size">The width and height of the grid.</param>
+        /// <param name="imageManager">An ImageManager instance for loading and caching images.</param>
         public Grid(PointF position, SizeF size, ImageManager imageManager)
         {
             Position = position;
@@ -38,35 +53,39 @@ namespace ArtfulWall.Models
             _imageManager = imageManager ?? throw new ArgumentNullException(nameof(imageManager));
         }
 
-        // 异步更新网格封面，将新封面绘制到给定壁纸上。
+        /// <summary>
+        /// Asynchronously updates the grid's cover image and draws the new cover onto the given wallpaper.
+        /// </summary>
+        /// <param name="coverPath">The file path of the new cover image.</param>
+        /// <param name="wallpaper">The wallpaper image to draw onto.</param>
         public async Task UpdateCoverAsync(string coverPath, Image<Rgba32> wallpaper)
         {
             if (string.IsNullOrWhiteSpace(coverPath))
-                throw new ArgumentException("封面图像路径不能为 null 或空白。", nameof(coverPath));
+                throw new ArgumentException("Cover image path cannot be null or whitespace.", nameof(coverPath));
             if (wallpaper is null)
-                throw new ArgumentNullException(nameof(wallpaper), "壁纸图像不能为 null。");
+                throw new ArgumentNullException(nameof(wallpaper), "Wallpaper image cannot be null.");
 
-            // 标准化路径，避免缓存错位
+            // Normalize the path to prevent cache mismatches
             coverPath = Path.GetFullPath(coverPath);
 
-            // 计算整数坐标和尺寸，使用四舍五入减少误差
+            // Calculate integer coordinates and size, using rounding to minimize error
             int posX = (int)Math.Round(Position.X);
             int posY = (int)Math.Round(Position.Y);
             int width = Math.Max(1, (int)Math.Round(Size.Width));
             int height = Math.Max(1, (int)Math.Round(Size.Height));
 
-            // 边界约束，防止超出壁纸范围
+            // Clamp boundaries to prevent exceeding wallpaper bounds
             posX = Math.Max(0, posX);
             posY = Math.Max(0, posY);
             width = Math.Min(width, wallpaper.Width - posX);
             height = Math.Min(height, wallpaper.Height - posY);
 
-            // 判断是否已是当前封面
+            // Determine if it's already the current cover
             lock (_sync)
             {
                 if (coverPath.Equals(_currentCoverPath, StringComparison.OrdinalIgnoreCase) && CurrentCover != null)
                 {
-                    Console.WriteLine($"封面未改变，跳过更新: {coverPath}");
+                    Console.WriteLine($"Cover unchanged, skipping update: {coverPath}");
                     return;
                 }
             }
@@ -74,15 +93,15 @@ namespace ArtfulWall.Models
             Image<Rgba32>? newCover = null;
             try
             {
-                // 加载或获取缓存中对应尺寸的封面图
+                // Load or retrieve the cover image at the required size from cache
                 newCover = await _imageManager.GetOrAddImageAsync(coverPath, new SixLabors.ImageSharp.Size(width, height));
                 if (newCover is null)
                 {
-                    Console.WriteLine($"无法加载封面图像: {coverPath}");
+                    Console.WriteLine($"Failed to load cover image: {coverPath}");
                     return;
                 }
 
-                // 裁剪并缩放到目标尺寸
+                // Crop and resize to the target dimensions
                 var resizeOptions = new ResizeOptions
                 {
                     Size = new SixLabors.ImageSharp.Size(width, height),
@@ -91,7 +110,7 @@ namespace ArtfulWall.Models
                 };
                 newCover.Mutate(ctx => ctx.Resize(resizeOptions));
 
-                // 释放旧资源并绘制新封面
+                // Dispose of old resources and draw the new cover
                 lock (_sync)
                 {
                     CurrentCover?.Dispose();
@@ -100,18 +119,20 @@ namespace ArtfulWall.Models
                     _currentCoverPath = coverPath;
                 }
 
-                Console.WriteLine($"已更新网格: [{posX},{posY}] {width}×{height}, 图像: {Path.GetFileName(coverPath)}");
+                Console.WriteLine($"Grid updated at [{posX},{posY}] {width}×{height}, image: {Path.GetFileName(coverPath)}");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"更新封面时发生错误: {ex.Message}");
-                // 如果 newCover 尚未被应用，则释放它
+                Console.WriteLine($"Error updating cover: {ex.Message}");
+                // If newCover was not applied, dispose of it
                 if (newCover != null && !coverPath.Equals(_currentCoverPath, StringComparison.OrdinalIgnoreCase))
                     newCover.Dispose();
             }
         }
 
-        // 释放当前封面图资源。
+        /// <summary>
+        /// Disposes the current cover image resources.
+        /// </summary>
         public void Dispose()
         {
             if (_disposed) return;
