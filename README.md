@@ -3,7 +3,7 @@
 # ArtfulWall 壁纸自动更新程序
 
 ## 项目简介
-ArtfulWall 是一款专为 Windows 平台设计的智能壁纸自动更换程序。它提供强大的多显示器支持，能够为每个屏幕独立设置壁纸，并智能适应不同分辨率、方向及 DPI 缩放。程序可以动态随机更新网格中的图片，降低审美疲劳。ArtfulWall 致力于为追求个性化、爱好音乐、专辑封面、桌面美学的用户提供流畅、稳定且高度可定制的壁纸体验。
+ArtfulWall 是一款专为 Windows 平台设计的智能壁纸自动更换程序。它提供多显示器支持，能够为每个屏幕独立设置壁纸，并适应不同分辨率、方向及 DPI 缩放。程序可以动态随机更新网格中的图片。ArtfulWall 致力于为追求个性化、爱好音乐、专辑封面、桌面美学的用户提供流畅、稳定且高度可定制的壁纸体验。
 
 [![video](https://img.youtube.com/vi/LIOjDCaVK_E/maxresdefault.jpg)](https://www.youtube.com/watch?v=LIOjDCaVK_E)
 <table>
